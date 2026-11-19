@@ -395,7 +395,7 @@ def fetch_twitter_code(token):
                         if msg_res.status_code == 200:
                             data = msg_res.json()
                             text_content = str(data.get('text', '')) + " " + str(data.get('subject', '')) + " " + str(data.get('intro', ''))
-                            codes = re.findall(r'\d{6}', text_content)
+                            codes = re.findall(r'\b\d{6}\b', text_content)
                             if codes:
                                 code = codes[0]
                                 if code not in used_codes_db:
@@ -414,7 +414,7 @@ def extract_username(text):
         if len(uname) >= 3 and not uname.lower() in ['http', 'https', 'com', 'twitter', 'x']:
             return uname
     
-    parts = re.split(r'[:|,\s	]+', text)
+    parts = re.split(r'[:|,\s\t]+', text)
     for part in parts:
         part_clean = part.replace('@', '').strip()
         if 3 <= len(part_clean) <= 15 and re.match(r'^[a-zA-Z0-9_]+$', part_clean):
@@ -435,7 +435,7 @@ def extract_auth_token(text):
     if json_match_rev:
         return json_match_rev.group(1)
 
-    hex_match = re.search(r'([a-fA-F0-9]{40})', text)
+    hex_match = re.search(r'\b([a-fA-F0-9]{40})\b', text)
     if hex_match:
         return hex_match.group(1)
 
@@ -511,8 +511,8 @@ def parse_full_accounts_file(message):
         line = line.strip()
         if '|' in line:
             parts = [p.strip() for p in line.split('|', 3)]
-        elif '	' in line:
-            parts = [p.strip() for p in line.split('	', 3)]
+        elif '\t' in line:
+            parts = [p.strip() for p in line.split('\t', 3)]
         elif ':' in line:
             parts = [p.strip() for p in line.split(':', 3)]
         elif ',' in line:
@@ -578,8 +578,7 @@ def approve_single_account(acc):
                 ref_user['total_earned'] += commission
                 ref_user['ref_earned'] = ref_user.get('ref_earned', 0.0) + commission
                 try:
-                    bot.send_message(referrer_id, f"👥 **Referral Commission!**
-Your referral completed a task, you earned **${commission:.4f}** commission!")
+                    bot.send_message(referrer_id, f"👥 **Referral Commission!**\nYour referral completed a task, you earned **${commission:.4f}** commission!")
                 except Exception:
                     pass
 
@@ -607,17 +606,14 @@ def distribute_top_rewards():
     sorted_u = sorted(users.items(), key=lambda x: x[1].get('completed_tasks', 0), reverse=True)
     rewards = SETTINGS.get('top_rewards', {1: 1.00, 2: 0.50, 3: 0.30, 4: 0.20, 5: 0.10})
     
-    rewarded_text = "🎉 **Top Leaderboard Winners & Rewards Added:**
-
-"
+    rewarded_text = "🎉 **Top Leaderboard Winners & Rewards Added:**\n\n"
     count = 0
     for idx, (uid, udata) in enumerate(sorted_u[:5], 1):
         bonus = rewards.get(idx, 0.0)
         if bonus > 0 and udata.get('completed_tasks', 0) > 0:
             udata['balance'] += bonus
             udata['total_earned'] += bonus
-            rewarded_text += f"{idx}. {udata['name']} (`{uid}`) - Bonus: `${bonus:.2f}`
-"
+            rewarded_text += f"{idx}. {udata['name']} (`{uid}`) - Bonus: `${bonus:.2f}`\n"
             try:
                 bot.send_message(uid, f"🏆 Congratulations! You ranked **#{idx}** on the Top Leaderboard and received a bonus of **${bonus:.2f}**!")
             except Exception:
@@ -655,8 +651,7 @@ def start(message):
                 ref_user['referrals_list'].append({'uid': user_id, 'time': time.time()})
                 
                 try:
-                    bot.send_message(ref_id, f"👥 **Referral Notification!**
-A new member joined from your referral link: {name}")
+                    bot.send_message(ref_id, f"👥 **Referral Notification!**\nA new member joined from your referral link: {name}")
                 except Exception:
                     pass
         except Exception:
@@ -685,9 +680,7 @@ def handle_all_messages(message):
                 bot.send_message(ADMIN_ID, "👑 **Admin Panel - Control Center**", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
                 return
             elif t_clean == "📊 Database Stats":
-                bot.send_message(ADMIN_ID, "📊 **Database & Accounts Management**
-
-Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Markdown")
+                bot.send_message(ADMIN_ID, "📊 **Database & Accounts Management**\n\nChoose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Markdown")
                 return
             elif t_clean in ["🏠 Main Menu", "❌ Cancel"]:
                 active_mails.pop(user_id, None)
@@ -719,8 +712,7 @@ Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Ma
             for u in usernames:
                 lifetime_usernames.add(u.lower())
             
-            bot.send_message(ADMIN_ID, f"✅ Successfully added `{len(usernames)}` usernames to the Lifetime Database!
-Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=database_stats_keyboard(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"✅ Successfully added `{len(usernames)}` usernames to the Lifetime Database!\nTotal Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=database_stats_keyboard(), parse_mode="Markdown")
             return
 
         elif admin_step == 'admin_awaiting_filter_file':
@@ -771,12 +763,9 @@ Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=data
             file_dup.name = "duplicate_old_accounts.xlsx"
 
             summary_msg = (
-                f"📊 **Account Filter & Split Summary:**
-"
-                f"• Total Checked: `{len(rows_data)}`
-"
-                f"• Brand New Accounts: `{len(new_rows)}`
-"
+                f"📊 **Account Filter & Split Summary:**\n"
+                f"• Total Checked: `{len(rows_data)}`\n"
+                f"• Brand New Accounts: `{len(new_rows)}`\n"
                 f"• Already Existed (Old/Duplicate): `{len(duplicate_rows)}`"
             )
             bot.send_message(ADMIN_ID, summary_msg, parse_mode="Markdown")
@@ -797,9 +786,13 @@ Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=data
                 bot.send_message(ADMIN_ID, "❌ ফাইল বা টেক্সটে কোনো ডাটা পাওয়া যায়নি!", reply_markup=admin_panel_keyboard())
                 return
 
-            msg = bot.send_message(ADMIN_ID, f"⏳ {len(rows_data)} টি একাউন্ট প্রসেস করে ক্লিন Excel Sheet তৈরি করা হচ্ছে...")
+            msg = bot.send_message(ADMIN_ID, f"⏳ {len(rows_data)} টি একাউন্ট প্রসেস করে A কলামে ক্লিন .xlsx ফাইল তৈরি করা হচ্ছে...")
             
-            clean_lines = []
+            wb_out = openpyxl.Workbook()
+            ws_out = wb_out.active
+            ws_out.title = "Sheet1"
+            
+            clean_count = 0
             
             for item in rows_data:
                 row = item['row']
@@ -823,19 +816,14 @@ Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=data
                 auth_token = extract_auth_token(raw_cookie_or_token).strip().rstrip(":")
 
                 if username and password and two_fa and auth_token:
-                    clean_lines.append(f"{username}:{password}:{two_fa}:{auth_token}")
+                    ws_out.append([f"{username}:{password}:{two_fa}:{auth_token}"])
+                    clean_count += 1
                 elif username and password and auth_token:
-                    clean_lines.append(f"{username}:{password}:{auth_token}")
+                    ws_out.append([f"{username}:{password}:{auth_token}"])
+                    clean_count += 1
 
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Sheet1"
-            
-            for line in clean_lines:
-                ws.append([line])
-            
             file_stream = io.BytesIO()
-            wb.save(file_stream)
+            wb_out.save(file_stream)
             file_stream.seek(0)
             file_stream.name = "accsmarket_clean_accounts.xlsx"
 
@@ -844,11 +832,9 @@ Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=data
                 ADMIN_ID, 
                 file_stream, 
                 caption=(
-                    f"✅ **ACCSmarket Ready Excel Sheet তৈরি সম্পন্ন!**
-
-"
-                    f"• মোট ক্লিন একাউন্ট: `{len(clean_lines)}`
-"
+                    f"✅ **ACCSmarket Ready (.xlsx) ফাইল তৈরি সম্পন্ন!**\n\n"
+                    f"• মোট ক্লিন একাউন্ট: `{clean_count}`\n"
+                    f"• কলাম: `A কলাম`\n"
                     f"• ফরম্যাট: `username:password:2fa:auth_token`"
                 ),
                 reply_markup=admin_panel_keyboard(),
@@ -965,14 +951,10 @@ Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=data
             file_good.name = "good_twitter_accounts.xlsx"
 
             summary_text = (
-                f"📊 **Custom Bulk Username & Duplicate Check Summary:**
-"
-                f"• Total Checked: `{len(rows_data)}`
-"
-                f"• Good/Active: `{len(good_accounts)}`
-"
-                f"• Suspended/Dead: `{len(suspended_accounts)}`
-"
+                f"📊 **Custom Bulk Username & Duplicate Check Summary:**\n"
+                f"• Total Checked: `{len(rows_data)}`\n"
+                f"• Good/Active: `{len(good_accounts)}`\n"
+                f"• Suspended/Dead: `{len(suspended_accounts)}`\n"
                 f"• Duplicate (Original): `{len(duplicate_accounts)}`"
             )
             bot.send_message(ADMIN_ID, summary_text, parse_mode="Markdown")
@@ -1026,15 +1008,13 @@ Total Lifetime Usernames stored: `{len(lifetime_usernames)}`", reply_markup=data
                     if message.content_type == 'photo':
                         photo_id = message.photo[-1].file_id
                         try:
-                            bot.send_photo(target_uid, photo_id, caption=f"✅ Your withdraw request has been successfully paid!
-Amount: ৳{bdt_amount:.2f} ({method})")
+                            bot.send_photo(target_uid, photo_id, caption=f"✅ Your withdraw request has been successfully paid!\nAmount: ৳{bdt_amount:.2f} ({method})")
                         except Exception:
                             pass
                         bot.send_message(ADMIN_ID, f"✅ Payment successfully completed and screenshot sent to the user!", reply_markup=admin_panel_keyboard())
                     else:
                         try:
-                            bot.send_message(target_uid, f"✅ Your withdraw request has been successfully paid!
-Amount: ৳{bdt_amount:.2f} ({method})")
+                            bot.send_message(target_uid, f"✅ Your withdraw request has been successfully paid!\nAmount: ৳{bdt_amount:.2f} ({method})")
                         except Exception:
                             pass
                         bot.send_message(ADMIN_ID, f"✅ Payment successfully completed!", reply_markup=admin_panel_keyboard())
@@ -1087,23 +1067,14 @@ Amount: ৳{bdt_amount:.2f} ({method})")
                 markup.add(telebot.types.InlineKeyboardButton("💰 Edit Balance", callback_data=f"adm_edit_bal_{target_uid}"))
 
                 msg_txt = (
-                    f"👤 **User Profile Info:**
-
-"
-                    f"• Name: {u_data.get('name')}
-"
-                    f"• Username: @{u_data.get('username', 'N/A')}
-"
-                    f"• UID: `{target_uid}`
-"
-                    f"• Status: `{st}`
-"
-                    f"• Current Balance: `${u_data.get('balance', 0.0):.4f}`
-"
-                    f"• Total Lifetime Earned: `${u_data.get('total_earned', 0.0):.4f}`
-"
-                    f"• Completed Tasks: {u_data.get('completed_tasks', 0)}
-"
+                    f"👤 **User Profile Info:**\n\n"
+                    f"• Name: {u_data.get('name')}\n"
+                    f"• Username: @{u_data.get('username', 'N/A')}\n"
+                    f"• UID: `{target_uid}`\n"
+                    f"• Status: `{st}`\n"
+                    f"• Current Balance: `${u_data.get('balance', 0.0):.4f}`\n"
+                    f"• Total Lifetime Earned: `${u_data.get('total_earned', 0.0):.4f}`\n"
+                    f"• Completed Tasks: {u_data.get('completed_tasks', 0)}\n"
                     f"• Total Referrals: {u_data.get('referral_count', 0)}"
                 )
                 bot.send_message(ADMIN_ID, msg_txt, reply_markup=markup, parse_mode="Markdown")
@@ -1135,9 +1106,7 @@ Amount: ৳{bdt_amount:.2f} ({method})")
             success = 0
             for uid in users:
                 try:
-                    bot.send_message(uid, f"📢 **Announcement:**
-
-{message.text}", parse_mode="Markdown")
+                    bot.send_message(uid, f"📢 **Announcement:**\n\n{message.text}", parse_mode="Markdown")
                     success += 1
                 except Exception:
                     pass
@@ -1172,12 +1141,9 @@ Amount: ৳{bdt_amount:.2f} ({method})")
                 markup.add(telebot.types.InlineKeyboardButton("👁️ View Details", callback_data=f"view_uid_{target_uid_found}"))
 
                 summary_text = (
-                    f"🔍 **Search Match Result:**
-"
-                    f"• User Name: {u_info.get('name')}
-"
-                    f"• UID: `{target_uid_found}`
-"
+                    f"🔍 **Search Match Result:**\n"
+                    f"• User Name: {u_info.get('name')}\n"
+                    f"• UID: `{target_uid_found}`\n"
                     f"• Matching Accounts: `{len(user_accs)}`"
                 )
                 bot.send_message(ADMIN_ID, summary_text, parse_mode="Markdown", reply_markup=markup)
@@ -1239,10 +1205,7 @@ Amount: ৳{bdt_amount:.2f} ({method})")
                             if reject_single_account(acc):
                                 total_rejected += 1
 
-                bot.send_message(ADMIN_ID, f"✅ Percentage auto-process completed!
-• Approved: `{total_approved}`
-• Rejected: `{total_rejected}`
-• Rate: `{pct}%`", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
+                bot.send_message(ADMIN_ID, f"✅ Percentage auto-process completed!\n• Approved: `{total_approved}`\n• Rejected: `{total_rejected}`\n• Rate: `{pct}%`", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
             except ValueError:
                 bot.send_message(ADMIN_ID, "❌ Please send a valid number (e.g. `80`):", reply_markup=admin_panel_keyboard())
             return
@@ -1281,10 +1244,7 @@ Amount: ৳{bdt_amount:.2f} ({method})")
                             if approve_single_account(acc):
                                 total_approved += 1
 
-                bot.send_message(ADMIN_ID, f"📉 Percentage Reject process completed!
-• New Custom Check Reject Rate updated to: `{pct}%`
-• Pending Rejected: `{total_rejected}`
-• Pending Approved: `{total_approved}`", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
+                bot.send_message(ADMIN_ID, f"📉 Percentage Reject process completed!\n• New Custom Check Reject Rate updated to: `{pct}%`\n• Pending Rejected: `{total_rejected}`\n• Pending Approved: `{total_approved}`", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
             except ValueError:
                 bot.send_message(ADMIN_ID, "❌ Please send a valid number (e.g. `2` or `5`):", reply_markup=admin_panel_keyboard())
             return
@@ -1343,12 +1303,7 @@ Amount: ৳{bdt_amount:.2f} ({method})")
                 r1, r2, r3, r4, r5 = float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
                 SETTINGS['top_rewards'] = {1: r1, 2: r2, 3: r3, 4: r4, 5: r5}
                 user_steps.pop(ADMIN_ID, None)
-                bot.send_message(ADMIN_ID, f"✅ Rank Rewards Updated!
-1st: `${r1}`
-2nd: `${r2}`
-3rd: `${r3}`
-4th: `${r4}`
-5th: `${r5}`", reply_markup=top_control_keyboard(), parse_mode="Markdown")
+                bot.send_message(ADMIN_ID, f"✅ Rank Rewards Updated!\n1st: `${r1}`\n2nd: `${r2}`\n3rd: `${r3}`\n4th: `${r4}`\n5th: `${r5}`", reply_markup=top_control_keyboard(), parse_mode="Markdown")
             except Exception:
                 bot.send_message(ADMIN_ID, "❌ Invalid format! Enter 5 space-separated numbers (e.g. `1.0 0.5 0.3 0.2 0.1`):", reply_markup=top_control_keyboard())
             return
@@ -1389,9 +1344,7 @@ Amount: ৳{bdt_amount:.2f} ({method})")
             return
 
         elif text == "📊 Database Stats":
-            bot.send_message(ADMIN_ID, "📊 **Database & Accounts Management**
-
-Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, "📊 **Database & Accounts Management**\n\nChoose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Markdown")
             return
 
         elif text == "📈 View Stats":
@@ -1401,17 +1354,11 @@ Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Ma
             pending_accs = sum(1 for a in submitted_accounts if a.get('status') == 'pending')
             approved_accs = sum(1 for a in submitted_accounts if a.get('status') == 'approved')
             stats_msg = (
-                f"📊 **Database & Accounts Stats:**
-
-"
-                f"• Total Registered Users: `{total_users}`
-"
-                f"• Stored Lifetime Usernames: `{total_lifetime}`
-"
-                f"• Total Submitted Accounts: `{total_submitted}`
-"
-                f"• Pending Accounts: `{pending_accs}`
-"
+                f"📊 **Database & Accounts Stats:**\n\n"
+                f"• Total Registered Users: `{total_users}`\n"
+                f"• Stored Lifetime Usernames: `{total_lifetime}`\n"
+                f"• Total Submitted Accounts: `{total_submitted}`\n"
+                f"• Pending Accounts: `{pending_accs}`\n"
                 f"• Approved Accounts: `{approved_accs}`"
             )
             bot.send_message(ADMIN_ID, stats_msg, reply_markup=database_stats_keyboard(), parse_mode="Markdown")
@@ -1435,13 +1382,9 @@ Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Ma
             
             bot.send_message(
                 ADMIN_ID, 
-                "🔑 **Auth Token Extractor (ACCSmarket Sheet):**
-
-"
-                f"• Colons (:): `{colon_st}`
-
-"
-                "আপনার `username, password, 2fa key, cookies` সংবলিত ফাইলটি (`.xlsx` অথবা টেক্সট লিস্ট) এখানে আপলোড করুন। বট কুকিজ থেকে `auth_token` বের করে আপনাকে ক্লিন এক্সেল শিট (`username:password:2fa:auth_token`) প্রদান করবে।", 
+                "🔑 **Auth Token Extractor (ACCSmarket Ready):**\n\n"
+                f"• Colons (:): `{colon_st}`\n\n"
+                "আপনার `username, password, 2fa key, cookies` সংবলিত ফাইলটি (`.xlsx` অথবা `.txt` লিস্ট) এখানে আপলোড করুন। বট কুকিজ থেকে `auth_token` বের করে A কলামে `username:password:2fa:auth_token` ফরম্যাটে ক্লিন `.xlsx` ফাইল প্রদান করবে।", 
                 reply_markup=markup, 
                 parse_mode="Markdown"
             )
@@ -1453,9 +1396,7 @@ Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Ma
             return
 
         elif text == "🔍 Check Accounts via Username":
-            bot.send_message(ADMIN_ID, "🔍 **Check Accounts via Username Submenu:**
-
-নিচের অপশনগুলো থেকে আপনার প্রয়োজনীয় কাজটি সিলেক্ট করুন:", reply_markup=check_accounts_username_menu(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, "🔍 **Check Accounts via Username Submenu:**\n\nনিচের অপশনগুলো থেকে আপনার প্রয়োজনীয় কাজটি সিলেক্ট করুন:", reply_markup=check_accounts_username_menu(), parse_mode="Markdown")
             return
 
         elif text in ["🔍 Check All Submitted Accounts", "🐦 Check Task 1 Accounts", "🔥 Check Task 2 Accounts"]:
@@ -1538,12 +1479,9 @@ Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Ma
             file_good.name = "good_twitter_accounts.xlsx"
 
             summary_text = (
-                f"📊 **Username-Based Account Check Summary ({check_title}):**
-"
-                f"• Total Checked: `{len(target_accounts)}`
-"
-                f"• Good/Active: `{len(good_accounts)}`
-"
+                f"📊 **Username-Based Account Check Summary ({check_title}):**\n"
+                f"• Total Checked: `{len(target_accounts)}`\n"
+                f"• Good/Active: `{len(good_accounts)}`\n"
                 f"• Suspended/Dead: `{len(suspended_accounts)}`"
             )
             bot.send_message(ADMIN_ID, summary_text, parse_mode="Markdown")
@@ -1570,8 +1508,7 @@ Choose an option below:", reply_markup=database_stats_keyboard(), parse_mode="Ma
 
         elif text == "📊 Task 1 Excel":
             filtered_accounts = [acc for acc in submitted_accounts if acc.get('task_name') == SETTINGS['task1_name']]
-            bot.send_message(ADMIN_ID, f"📊 **Task 1 Accounts Management**
-Total Saved: `{len(filtered_accounts)}`", reply_markup=excel_task1_menu(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"📊 **Task 1 Accounts Management**\nTotal Saved: `{len(filtered_accounts)}`", reply_markup=excel_task1_menu(), parse_mode="Markdown")
             return
 
         elif text == "📊 Download Excel: Task 1":
@@ -1592,10 +1529,7 @@ Total Saved: `{len(filtered_accounts)}`", reply_markup=excel_task1_menu(), parse
             wb.save(file_stream)
             file_stream.seek(0)
             file_stream.name = "twitter_auth_token_accounts.xlsx"
-            bot.send_document(ADMIN_ID, file_stream, caption=f"📊 **Task 1 Excel File (Auth_Token)**
-Total: {len(filtered_accounts)}
-
-✅ File downloaded successfully. You can now delete them.")
+            bot.send_document(ADMIN_ID, file_stream, caption=f"📊 **Task 1 Excel File (Auth_Token)**\nTotal: {len(filtered_accounts)}\n\n✅ File downloaded successfully. You can now delete them.")
             return
 
         elif text == "🗑️ Delete Task 1 Accounts":
@@ -1610,8 +1544,7 @@ Total: {len(filtered_accounts)}
 
         elif text == "📊 Task 2 Excel (2FA)":
             filtered_accounts = [acc for acc in submitted_accounts if acc.get('task_name') == SETTINGS['task2_name']]
-            bot.send_message(ADMIN_ID, f"📊 **2FA Accounts Management**
-Total Saved: `{len(filtered_accounts)}`", reply_markup=excel_2fa_menu(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"📊 **2FA Accounts Management**\nTotal Saved: `{len(filtered_accounts)}`", reply_markup=excel_2fa_menu(), parse_mode="Markdown")
             return
 
         elif text == "📊 Download Excel: 2FA":
@@ -1632,10 +1565,7 @@ Total Saved: `{len(filtered_accounts)}`", reply_markup=excel_2fa_menu(), parse_m
             wb.save(file_stream)
             file_stream.seek(0)
             file_stream.name = "twitter_2fa_accounts.xlsx"
-            bot.send_document(ADMIN_ID, file_stream, caption=f"📊 **2FA Accounts File**
-Total: {len(filtered_accounts)}
-
-✅ File downloaded successfully. You can now delete them.")
+            bot.send_document(ADMIN_ID, file_stream, caption=f"📊 **2FA Accounts File**\nTotal: {len(filtered_accounts)}\n\n✅ File downloaded successfully. You can now delete them.")
             return
 
         elif text == "🗑️ Delete 2FA Accounts":
@@ -1673,9 +1603,7 @@ Total: {len(filtered_accounts)}
 
         elif text == "⚙️ Set Minimum Withdraw Limit":
             user_steps[ADMIN_ID] = 'set_min_withdraw_limit'
-            bot.send_message(ADMIN_ID, f"⚙️ Current Minimum Withdraw Limit: ৳{SETTINGS.get('min_withdraw_bdt', 5.0)}
-
-✍️ Send the new minimum withdraw limit in BDT (numbers only, e.g. `10`):", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("⚙️ Payment Methods")), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"⚙️ Current Minimum Withdraw Limit: ৳{SETTINGS.get('min_withdraw_bdt', 5.0)}\n\n✍️ Send the new minimum withdraw limit in BDT (numbers only, e.g. `10`):", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("⚙️ Payment Methods")), parse_mode="Markdown")
             return
 
         elif text == "👥 User Management":
@@ -1683,11 +1611,8 @@ Total: {len(filtered_accounts)}
             total_users = len(users)
             bot.send_message(
                 ADMIN_ID, 
-                f"👥 **User Management Panel**
-"
-                f"• Total Registered Users: `{total_users}`
-
-"
+                f"👥 **User Management Panel**\n"
+                f"• Total Registered Users: `{total_users}`\n\n"
                 f"🔍 Send the **UID (User ID)** or **Name/Username** of the user you want to manage or edit balance for:", 
                 reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel")), 
                 parse_mode="Markdown"
@@ -1697,14 +1622,9 @@ Total: {len(filtered_accounts)}
         elif text == "👥 Referral Management":
             st_text = "🟢 Active" if SETTINGS.get('ref_enabled', True) else "🔴 Inactive"
             info_ref = (
-                f"👥 **Referral Management Panel**
-
-"
-                f"• Status: `{st_text}`
-"
-                f"• Commission: `{SETTINGS.get('ref_commission_pct', 10.0)}%`
-
-"
+                f"👥 **Referral Management Panel**\n\n"
+                f"• Status: `{st_text}`\n"
+                f"• Commission: `{SETTINGS.get('ref_commission_pct', 10.0)}%`\n\n"
                 f"Select an option below to modify:"
             )
             bot.send_message(ADMIN_ID, info_ref, reply_markup=referral_mgmt_keyboard(), parse_mode="Markdown")
@@ -1722,16 +1642,10 @@ Total: {len(filtered_accounts)}
 
         elif text == "🔐 Password Management":
             info_pwd = (
-                f"🔐 **Password Management Panel**
-
-"
-                f"• Current Mode: `{SETTINGS.get('pwd_mode')}`
-"
-                f"• Target Task: `{SETTINGS.get('pwd_target_task')}`
-"
-                f"• Custom Password Value: `{SETTINGS.get('custom_pwd_value')}`
-
-"
+                f"🔐 **Password Management Panel**\n\n"
+                f"• Current Mode: `{SETTINGS.get('pwd_mode')}`\n"
+                f"• Target Task: `{SETTINGS.get('pwd_target_task')}`\n"
+                f"• Custom Password Value: `{SETTINGS.get('custom_pwd_value')}`\n\n"
                 f"Select password mode or target task below:"
             )
             bot.send_message(ADMIN_ID, info_pwd, reply_markup=password_mgmt_keyboard(), parse_mode="Markdown")
@@ -1787,8 +1701,7 @@ Total: {len(filtered_accounts)}
             return
 
         elif text == "🎬 Video Management":
-            bot.send_message(ADMIN_ID, f"🎬 **Video Management Panel**
-Total Videos: `{len(videos_list)}`", reply_markup=video_mgmt_keyboard(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"🎬 **Video Management Panel**\nTotal Videos: `{len(videos_list)}`", reply_markup=video_mgmt_keyboard(), parse_mode="Markdown")
             return
 
         elif text == "➕ Add Video File / Link":
@@ -1802,9 +1715,7 @@ Total Videos: `{len(videos_list)}`", reply_markup=video_mgmt_keyboard(), parse_m
             return
 
         elif text == "🔍 Search UID/Username":
-            bot.send_message(ADMIN_ID, "🔍 **Search & Pending Accounts Menu:**
-
-নিচের অপশনগুলো থেকে সিলেক্ট করুন:", reply_markup=search_pending_menu(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, "🔍 **Search & Pending Accounts Menu:**\n\nনিচের অপশনগুলো থেকে সিলেক্ট করুন:", reply_markup=search_pending_menu(), parse_mode="Markdown")
             return
 
         elif text == "🔍 Search UID / Username":
@@ -1842,9 +1753,7 @@ Total Videos: `{len(videos_list)}`", reply_markup=video_mgmt_keyboard(), parse_m
             bot.send_document(
                 ADMIN_ID, 
                 file_stream, 
-                caption=f"📊 **Pending Accounts Excel File**
-
-• Total Pending Accounts: `{len(pending_list)}`",
+                caption=f"📊 **Pending Accounts Excel File**\n\n• Total Pending Accounts: `{len(pending_list)}`",
                 reply_markup=search_pending_menu()
             )
             return
@@ -1871,9 +1780,7 @@ Total Videos: `{len(videos_list)}`", reply_markup=video_mgmt_keyboard(), parse_m
 
         elif text == "📉 Percentage Reject Process":
             user_steps[ADMIN_ID] = 'admin_percentage_reject_input'
-            bot.send_message(ADMIN_ID, f"📉 Current Default Custom Check Reject Rate: `{SETTINGS.get('custom_check_reject_pct', 3.5)}%`
-
-Send the new percentage (%) of rejection rate (e.g., `2` for 2%, `5` for 5%):", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel")), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"📉 Current Default Custom Check Reject Rate: `{SETTINGS.get('custom_check_reject_pct', 3.5)}%`\n\nSend the new percentage (%) of rejection rate (e.g., `2` for 2%, `5` for 5%):", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel")), parse_mode="Markdown")
             return
 
         elif text == "🏆 Top Control":
@@ -1888,25 +1795,15 @@ Send the new percentage (%) of rejection rate (e.g., `2` for 2%, `5` for 5%):", 
 
             rw = SETTINGS.get('top_rewards', {})
             info_msg = (
-                f"🏆 **Top Leaderboard Management**
-
-"
-                f"• Status: `{st_text}`
-"
-                f"• Reset Schedule: `{mode_text}`
-"
-                f"• Rewards list:
-"
-                f"  🥇 Rank 1: `${rw.get(1, 0):.2f}`
-"
-                f"  🥈 Rank 2: `${rw.get(2, 0):.2f}`
-"
-                f"  🥉 Rank 3: `${rw.get(3, 0):.2f}`
-"
-                f"  4️⃣ Rank 4: `${rw.get(4, 0):.2f}`
-"
-                f"  5️⃣ Rank 5: `${rw.get(5, 0):.2f}`
-"
+                f"🏆 **Top Leaderboard Management**\n\n"
+                f"• Status: `{st_text}`\n"
+                f"• Reset Schedule: `{mode_text}`\n"
+                f"• Rewards list:\n"
+                f"  🥇 Rank 1: `${rw.get(1, 0):.2f}`\n"
+                f"  🥈 Rank 2: `${rw.get(2, 0):.2f}`\n"
+                f"  🥉 Rank 3: `${rw.get(3, 0):.2f}`\n"
+                f"  4️⃣ Rank 4: `${rw.get(4, 0):.2f}`\n"
+                f"  5️⃣ Rank 5: `${rw.get(5, 0):.2f}`\n"
             )
             bot.send_message(ADMIN_ID, info_msg, reply_markup=top_control_keyboard(), parse_mode="Markdown")
             return
@@ -1941,9 +1838,7 @@ Send the new percentage (%) of rejection rate (e.g., `2` for 2%, `5` for 5%):", 
 
         elif text == "💰 Edit Rank Rewards":
             user_steps[ADMIN_ID] = 'set_top_rank_rewards'
-            bot.send_message(ADMIN_ID, "💰 Send bonus amounts for ranks 1 to 5 separated by space:
-
-**Example:** `1.00 0.50 0.30 0.20 0.10`", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("🏆 Top Control")), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, "💰 Send bonus amounts for ranks 1 to 5 separated by space:\n\n**Example:** `1.00 0.50 0.30 0.20 0.10`", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("🏆 Top Control")), parse_mode="Markdown")
             return
 
         elif text == "📤 Withdraw Requests":
@@ -1958,11 +1853,7 @@ Send the new percentage (%) of rejection rate (e.g., `2` for 2%, `5` for 5%):", 
                         telebot.types.InlineKeyboardButton("✅ Mark as Paid", callback_data=f"pay_wd_{idx}"),
                         telebot.types.InlineKeyboardButton("❌ Reject & Refund", callback_data=f"rej_wd_{idx}")
                     )
-                    info = f"📤 **Withdraw Request ID:** `{idx}`
-• User ID: `{req['user_id']}`
-• Amount: **${req['amount_usd']:.4f}** (~৳{req['amount_bdt']:.2f})
-• Method: **{req['method']}**
-• Details: `{req['details']}`"
+                    info = f"📤 **Withdraw Request ID:** `{idx}`\n• User ID: `{req['user_id']}`\n• Amount: **${req['amount_usd']:.4f}** (~৳{req['amount_bdt']:.2f})\n• Method: **{req['method']}**\n• Details: `{req['details']}`"
                     bot.send_message(ADMIN_ID, info, parse_mode="Markdown", reply_markup=markup)
             return
 
@@ -1970,11 +1861,7 @@ Send the new percentage (%) of rejection rate (e.g., `2` for 2%, `5` for 5%):", 
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.row(telebot.types.KeyboardButton("Change Task 1 Price"), telebot.types.KeyboardButton("Change Task 2 Price"))
             markup.row(telebot.types.KeyboardButton("👑 Admin Panel"))
-            bot.send_message(ADMIN_ID, f"💰 **Current Prices:**
-• Task 1: `${SETTINGS['reward_tw_token']:.4f}`
-• Task 2: `${SETTINGS['reward_tw_2fa']:.4f}`
-
-Select option below to change:", reply_markup=markup, parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"💰 **Current Prices:**\n• Task 1: `${SETTINGS['reward_tw_token']:.4f}`\n• Task 2: `${SETTINGS['reward_tw_2fa']:.4f}`\n\nSelect option below to change:", reply_markup=markup, parse_mode="Markdown")
             return
 
         elif text == "Change Task 1 Price":
@@ -1988,14 +1875,11 @@ Select option below to change:", reply_markup=markup, parse_mode="Markdown")
             return
 
         elif text == "✏️ Change Task Names":
-            bot.send_message(ADMIN_ID, f"📝 **Task Names:**
-1. `{SETTINGS['task1_name']}`
-2. `{SETTINGS['task2_name']}`", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"📝 **Task Names:**\n1. `{SETTINGS['task1_name']}`\n2. `{SETTINGS['task2_name']}`", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
             return
 
         elif text == "⚙️ Payment Methods":
-            bot.send_message(ADMIN_ID, f"⚙️ **Payment Methods Control & Limits:**
-• Minimum Withdraw Limit: ৳{SETTINGS.get('min_withdraw_bdt', 5.0)}", reply_markup=payment_toggle_keyboard(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"⚙️ **Payment Methods Control & Limits:**\n• Minimum Withdraw Limit: ৳{SETTINGS.get('min_withdraw_bdt', 5.0)}", reply_markup=payment_toggle_keyboard(), parse_mode="Markdown")
             return
 
         elif text == "📢 Broadcast Message":
@@ -2004,8 +1888,7 @@ Select option below to change:", reply_markup=markup, parse_mode="Markdown")
             return
 
         elif text == "🛠️ Task Control":
-            bot.send_message(ADMIN_ID, f"🛠️ **Task Control Status:**
-• Current Report Time: `{SETTINGS.get('task_report_timer_text', 'Every 30 minutes')}`", reply_markup=task_control_keyboard(), parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"🛠️ **Task Control Status:**\n• Current Report Time: `{SETTINGS.get('task_report_timer_text', 'Every 30 minutes')}`", reply_markup=task_control_keyboard(), parse_mode="Markdown")
             return
 
     if text == "💰 Balance":
@@ -2021,20 +1904,13 @@ Select option below to change:", reply_markup=markup, parse_mode="Markdown")
         in_review = sum(1 for acc in submitted_accounts if acc.get('user_id') == user_id and acc.get('status') == 'pending')
 
         balance_text = (
-            f"💻 **Your Account Balance:**
-"
-            f"━━━━━━━━━━━━━━━━━━
-"
-            f"💰 Balance: {bdt_bal:.2f} BDT (${bal:.3f})
-"
-            f"🔄 Pending Withdraw: {pending_wd_bdt:.2f} BDT (${pending_wd_usd:.3f})
-"
-            f"💵 Total Income: {total_earned_bdt:.2f} BDT (${total_earned_usd:.3f})
-"
-            f"━━━━━━━━━━━━━━━━━━
-"
-            f"✅ Completed Tasks: {completed_tasks}
-"
+            f"💻 **Your Account Balance:**\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💰 Balance: {bdt_bal:.2f} BDT (${bal:.3f})\n"
+            f"🔄 Pending Withdraw: {pending_wd_bdt:.2f} BDT (${pending_wd_usd:.3f})\n"
+            f"💵 Total Income: {total_earned_bdt:.2f} BDT (${total_earned_usd:.3f})\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"✅ Completed Tasks: {completed_tasks}\n"
             f"⌛ In Review: {in_review}"
         )
         bot.send_message(user_id, balance_text, parse_mode="Markdown")
@@ -2059,9 +1935,7 @@ Select option below to change:", reply_markup=markup, parse_mode="Markdown")
         min_bdt = SETTINGS['min_withdraw_bdt']
 
         if bdt_amt < min_bdt:
-            bot.send_message(user_id, f"❌ Insufficient balance!
-Current Balance: ${bal:.4f} (~৳{bdt_amt:.2f})
-Minimum Withdraw: ৳{min_bdt}")
+            bot.send_message(user_id, f"❌ Insufficient balance!\nCurrent Balance: ${bal:.4f} (~৳{bdt_amt:.2f})\nMinimum Withdraw: ৳{min_bdt}")
             return
 
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -2073,24 +1947,14 @@ Minimum Withdraw: ৳{min_bdt}")
             markup.row(telebot.types.KeyboardButton("🟡 Binance USDT"))
         markup.row(telebot.types.KeyboardButton("❌ Cancel"))
         user_steps[user_id] = 'awaiting_withdraw_method'
-        bot.send_message(user_id, f"💳 Your Balance: ${bal:.4f} (~৳{bdt_amt:.2f})
-
-Select a payment method to withdraw:", reply_markup=markup)
+        bot.send_message(user_id, f"💳 Your Balance: ${bal:.4f} (~৳{bdt_amt:.2f})\n\nSelect a payment method to withdraw:", reply_markup=markup)
         return
 
     elif text == "👤 Profile":
         user_steps.pop(user_id, None)
         u_data = get_user_data(user_id, message.from_user.first_name, message.from_user.username)
         my_pendings = sum(1 for acc in submitted_accounts if acc.get('user_id') == user_id and acc.get('status') == 'pending')
-        profile_text = f"👤 **Profile Info:**
-
-• Name: {u_data.get('name')}
-• Username: @{u_data.get('username', 'N/A')}
-• User ID: `{user_id}`
-• Completed Tasks: {u_data['completed_tasks']}
-• Pending Accounts: {my_pendings}
-• Balance: ${u_data['balance']:.4f}
-• Total Referrals: {u_data.get('referral_count', 0)}"
+        profile_text = f"👤 **Profile Info:**\n\n• Name: {u_data.get('name')}\n• Username: @{u_data.get('username', 'N/A')}\n• User ID: `{user_id}`\n• Completed Tasks: {u_data['completed_tasks']}\n• Pending Accounts: {my_pendings}\n• Balance: ${u_data['balance']:.4f}\n• Total Referrals: {u_data.get('referral_count', 0)}"
         bot.send_message(user_id, profile_text, parse_mode="Markdown")
         return
 
@@ -2108,18 +1972,10 @@ Select a payment method to withdraw:", reply_markup=markup)
         new_24h = sum(1 for r in ref_list if now_ts - r.get('time', 0) <= 86400)
         ref_earned = u_data.get('ref_earned', 0.0)
         ref_msg = (
-            f"👥 **Total referrals:** `{total_refs}`
-"
-            f"🆕 **New in last 24 hours:** `{new_24h}`
-
-"
-            f"💰 **Total Referral Income:** `${ref_earned:.4f}`
-
-"
-            f"🔗 **Your referral link:**
-`{ref_link}`
-
-"
+            f"👥 **Total referrals:** `{total_refs}`\n"
+            f"🆕 **New in last 24 hours:** `{new_24h}`\n\n"
+            f"💰 **Total Referral Income:** `${ref_earned:.4f}`\n\n"
+            f"🔗 **Your referral link:**\n`{ref_link}`\n\n"
             f"ℹ️ You receive **{ref_pct}%** of the earnings of each of your referrals from the tasks they complete."
         )
         bot.send_message(user_id, ref_msg, parse_mode="Markdown")
@@ -2153,16 +2009,12 @@ Select a payment method to withdraw:", reply_markup=markup)
             minutes = (rem_secs % 3600) // 60
 
         sorted_u = sorted(users.items(), key=lambda x: x[1].get('completed_tasks', 0), reverse=True)
-        top_text = f"🏆 **Top Working Members:**
-⏱️ **Reset in:** `{hours}h {minutes}m`
-
-"
+        top_text = f"🏆 **Top Working Members:**\n⏱️ **Reset in:** `{hours}h {minutes}m`\n\n"
         rw = SETTINGS.get('top_rewards', {})
         for idx, (uid, udata) in enumerate(sorted_u[:10], 1):
             bonus_val = rw.get(idx, 0)
             bonus_str = f" [Bonus: ${bonus_val:.2f}]" if idx <= 5 and bonus_val > 0 else ""
-            top_text += f"{idx}. {udata.get('name', 'User')} - **{udata.get('completed_tasks', 0)}** Tasks{bonus_str}
-"
+            top_text += f"{idx}. {udata.get('name', 'User')} - **{udata.get('completed_tasks', 0)}** Tasks{bonus_str}\n"
         bot.send_message(user_id, top_text, parse_mode="Markdown")
         return
 
@@ -2173,22 +2025,12 @@ Select a payment method to withdraw:", reply_markup=markup)
         markup = telebot.types.InlineKeyboardMarkup()
         for idx, v in enumerate(videos_list):
             markup.add(telebot.types.InlineKeyboardButton(f"▶️ {v['title']}", callback_data=f"watch_vid_{idx}"))
-        bot.send_message(user_id, "🎬 **Tutorial Videos:**
-
-Click button below:", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(user_id, "🎬 **Tutorial Videos:**\n\nClick button below:", reply_markup=markup, parse_mode="Markdown")
         return
 
     elif text.startswith("🐦 ") or SETTINGS['task1_name'] in text:
         report_time = SETTINGS.get('task_report_timer_text', 'Every 30 minutes')
-        m1 = bot.send_message(user_id, f"⏳ Report Schedule: {report_time} ⏳
-
-📋 Task: {SETTINGS['task1_name']}
-
-📄 Description: 🔒 REQUIRED!
-You must use the information provided by the Telegram bot to register.
-
-✍️ Report instruction:
-Submit 2FA Key and Auth Token to complete.")
+        m1 = bot.send_message(user_id, f"⏳ Report Schedule: {report_time} ⏳\n\n📋 Task: {SETTINGS['task1_name']}\n\n📄 Description: 🔒 REQUIRED!\nYou must use the information provided by the Telegram bot to register.\n\n✍️ Report instruction:\nSubmit 2FA Key and Auth Token to complete.")
         msg = bot.send_message(user_id, "⏳ Ordering email, please wait...")
         mail_obj = create_mailtm_account(SETTINGS['task1_name'])
         if not mail_obj:
@@ -2199,9 +2041,7 @@ Submit 2FA Key and Auth Token to complete.")
         user_acc_data[user_id] = {'task_type': 'task1_token', 'login': login_user, 'password': password_gen, 'email': email, 'task_name': SETTINGS['task1_name'], 'msg_ids': []}
         user_steps[user_id] = 'awaiting_email_code_request'
         bot.delete_message(user_id, msg.message_id)
-        details_text = f"Login: `{login_user}`
-Password: `{password_gen}`
-Email: `{email}`"
+        details_text = f"Login: `{login_user}`\nPassword: `{password_gen}`\nEmail: `{email}`"
         m2 = bot.send_message(user_id, details_text, parse_mode="Markdown")
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row(telebot.types.KeyboardButton("📩 Get code"))
@@ -2212,15 +2052,7 @@ Email: `{email}`"
 
     elif text.startswith("🔥 ") or SETTINGS['task2_name'] in text:
         report_time = SETTINGS.get('task_report_timer_text', 'Every 30 minutes')
-        m1 = bot.send_message(user_id, f"⏳ Report Schedule: {report_time} ⏳
-
-📋 Task: {SETTINGS['task2_name']}
-
-📄 Description: 🔒 REQUIRED!
-You must use the information provided by the Telegram bot to register.
-
-✍️ Report instruction:
-Submit 2FA Secret Key to get code.")
+        m1 = bot.send_message(user_id, f"⏳ Report Schedule: {report_time} ⏳\n\n📋 Task: {SETTINGS['task2_name']}\n\n📄 Description: 🔒 REQUIRED!\nYou must use the information provided by the Telegram bot to register.\n\n✍️ Report instruction:\nSubmit 2FA Secret Key to get code.")
         msg = bot.send_message(user_id, "⏳ Ordering email, please wait...")
         mail_obj = create_mailtm_account(SETTINGS['task2_name'])
         if not mail_obj:
@@ -2231,9 +2063,7 @@ Submit 2FA Secret Key to get code.")
         user_acc_data[user_id] = {'task_type': 'task2_2fa', 'login': login_user, 'password': password_gen, 'email': email, 'task_name': SETTINGS['task2_name'], 'msg_ids': []}
         user_steps[user_id] = 'awaiting_email_code_request'
         bot.delete_message(user_id, msg.message_id)
-        details_text = f"Login: `{login_user}`
-Password: `{password_gen}`
-Email: `{email}`"
+        details_text = f"Login: `{login_user}`\nPassword: `{password_gen}`\nEmail: `{email}`"
         m2 = bot.send_message(user_id, details_text, parse_mode="Markdown")
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row(telebot.types.KeyboardButton("📩 Get code"))
@@ -2255,9 +2085,7 @@ Email: `{email}`"
         markup.row(telebot.types.KeyboardButton("❌ Cancel"))
         if otp_code:
             m_code = bot.send_message(user_id, f"`{otp_code}`", parse_mode="Markdown")
-            m_prompt = bot.send_message(user_id, "Tap code above to copy.
-
-🔑 Please enter your 2FA key to get the code:", reply_markup=markup)
+            m_prompt = bot.send_message(user_id, "Tap code above to copy.\n\n🔑 Please enter your 2FA key to get the code:", reply_markup=markup)
             if user_id in user_acc_data and 'msg_ids' in user_acc_data[user_id]:
                 user_acc_data[user_id]['msg_ids'].extend([m_code.message_id, m_prompt.message_id])
             user_steps[user_id] = 'awaiting_2fa_key_input'
@@ -2275,9 +2103,7 @@ Email: `{email}`"
             u_data = get_user_data(user_id)
             bal = u_data['balance']
             bdt_amt = bal * SETTINGS['usd_to_bdt']
-            bot.send_message(user_id, f"💳 Your Balance: ${bal:.4f} (~৳{bdt_amt:.2f})
-
-✍️ Please enter the amount you want to withdraw in USD ($):", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("❌ Cancel")))
+            bot.send_message(user_id, f"💳 Your Balance: ${bal:.4f} (~৳{bdt_amt:.2f})\n\n✍️ Please enter the amount you want to withdraw in USD ($):", reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("❌ Cancel")))
         return
 
     elif step == 'awaiting_withdraw_amount':
@@ -2340,14 +2166,9 @@ Email: `{email}`"
         user_steps.pop(user_id, None)
         user_acc_data.pop(user_id, None)
 
-        bot.send_message(user_id, f"✅ Withdraw request submitted successfully!
-Amount: ৳{amt_bdt:.2f} (~${amt_usd:.4f}) + ৳{SETTINGS['withdraw_fee_bdt']} fee ({method})", reply_markup=main_keyboard(user_id))
+        bot.send_message(user_id, f"✅ Withdraw request submitted successfully!\nAmount: ৳{amt_bdt:.2f} (~${amt_usd:.4f}) + ৳{SETTINGS['withdraw_fee_bdt']} fee ({method})", reply_markup=main_keyboard(user_id))
         try:
-            bot.send_message(ADMIN_ID, f"📤 **New Withdraw Request!**
-User ID: `{user_id}`
-Amount: `${amt_usd:.4f}` (~৳{amt_bdt:.2f})
-Method: **{method}**
-Details: `{details}`", parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"📤 **New Withdraw Request!**\nUser ID: `{user_id}`\nAmount: `${amt_usd:.4f}` (~৳{amt_bdt:.2f})\nMethod: **{method}**\nDetails: `{details}`", parse_mode="Markdown")
         except Exception:
             pass
         return
@@ -2398,11 +2219,7 @@ Details: `{details}`", parse_mode="Markdown")
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.row(telebot.types.KeyboardButton("❌ Cancel"))
             m_code = bot.send_message(user_id, f"`{current_otp}`", parse_mode="Markdown")
-            m_prompt = bot.send_message(user_id, "📋 Your one-time code:
-
-👆 Tap the code to copy
-
-Please send the account auth_token / cookies:", reply_markup=markup)
+            m_prompt = bot.send_message(user_id, "📋 Your one-time code:\n\n👆 Tap the code to copy\n\nPlease send the account auth_token / cookies:", reply_markup=markup)
             if 'msg_ids' in user_acc_data[user_id]:
                 user_acc_data[user_id]['msg_ids'].extend([m_code.message_id, m_prompt.message_id])
 
@@ -2411,11 +2228,7 @@ Please send the account auth_token / cookies:", reply_markup=markup)
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.row(telebot.types.KeyboardButton("✅ Confirm"), telebot.types.KeyboardButton("❌ Cancel"))
             m_code = bot.send_message(user_id, f"`{current_otp}`", parse_mode="Markdown")
-            m_prompt = bot.send_message(user_id, "📋 Your one-time code:
-
-👆 Tap the code to copy
-
-Please press **✅ Confirm** or **❌ Cancel**:", reply_markup=markup, parse_mode="Markdown")
+            m_prompt = bot.send_message(user_id, "📋 Your one-time code:\n\n👆 Tap the code to copy\n\nPlease press **✅ Confirm** or **❌ Cancel**:", reply_markup=markup, parse_mode="Markdown")
             if 'msg_ids' in user_acc_data[user_id]:
                 user_acc_data[user_id]['msg_ids'].extend([m_code.message_id, m_prompt.message_id])
         return
@@ -2463,11 +2276,7 @@ Please press **✅ Confirm** or **❌ Cancel**:", reply_markup=markup, parse_mod
         }
         submitted_accounts.append(acc_entry)
 
-        admin_alert = f"🔔 **New Account Submitted!**
-
-• User: `{user_id}`
-• Task: `{acc_entry['task_name']}`
-• Username: `{acc_entry['username']}`"
+        admin_alert = f"🔔 **New Account Submitted!**\n\n• User: `{user_id}`\n• Task: `{acc_entry['task_name']}`\n• Username: `{acc_entry['username']}`"
         try:
             bot.send_message(ADMIN_ID, admin_alert, parse_mode="Markdown")
         except Exception:
@@ -2495,11 +2304,7 @@ Please press **✅ Confirm** or **❌ Cancel**:", reply_markup=markup, parse_mod
             }
             submitted_accounts.append(acc_entry)
 
-            admin_alert = f"🔔 **New Account Submitted!**
-
-• User: `{user_id}`
-• Task: `{acc_entry['task_name']}`
-• Username: `{acc_entry['username']}`"
+            admin_alert = f"🔔 **New Account Submitted!**\n\n• User: `{user_id}`\n• Task: `{acc_entry['task_name']}`\n• Username: `{acc_entry['username']}`"
             try:
                 bot.send_message(ADMIN_ID, admin_alert, parse_mode="Markdown")
             except Exception:
@@ -2535,13 +2340,9 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, f"Colons toggled to {colon_st}")
         try:
             bot.edit_message_text(
-                "🔑 **Auth Token Extractor (ACCSmarket Sheet):**
-
-"
-                f"• Colons (:): `{colon_st}`
-
-"
-                "আপনার `username, password, 2fa key, cookies` সংবলিত ফাইলটি (`.xlsx` অথবা টেক্সট লিস্ট) এখানে আপলোড করুন। বট কুকিজ থেকে `auth_token` বের করে আপনাকে ক্লিন এক্সেল শিট (`username:password:2fa:auth_token`) প্রদান করবে।",
+                "🔑 **Auth Token Extractor (ACCSmarket Ready):**\n\n"
+                f"• Colons (:): `{colon_st}`\n\n"
+                "আপনার `username, password, 2fa key, cookies` সংবলিত ফাইলটি (`.xlsx` অথবা `.txt` লিস্ট) এখানে আপলোড করুন। বট কুকিজ থেকে `auth_token` বের করে A কলামে `username:password:2fa:auth_token` ফরম্যাটে ক্লিন `.xlsx` ফাইল প্রদান করবে।",
                 call.message.chat.id,
                 call.message.message_id,
                 reply_markup=markup,
@@ -2556,9 +2357,7 @@ def handle_callbacks(call):
         blocked_users.add(target_uid)
         bot.answer_callback_query(call.id, f"User {target_uid} blocked!")
         try:
-            bot.edit_message_text(call.message.text + "
-
-**[Status: BLOCKED 🔴]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text(call.message.text + "\n\n**[Status: BLOCKED 🔴]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
         except Exception:
             pass
 
@@ -2567,9 +2366,7 @@ def handle_callbacks(call):
         blocked_users.discard(target_uid)
         bot.answer_callback_query(call.id, f"User {target_uid} unblocked!")
         try:
-            bot.edit_message_text(call.message.text + "
-
-**[Status: ACTIVE 🟢]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text(call.message.text + "\n\n**[Status: ACTIVE 🟢]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
         except Exception:
             pass
 
@@ -2608,18 +2405,13 @@ def handle_callbacks(call):
                 telebot.types.InlineKeyboardButton(f"✅ Approve All ({len(user_pending_accs)})", callback_data=f"app_uid_{t_uid}"),
                 telebot.types.InlineKeyboardButton(f"❌ Reject All ({len(user_pending_accs)})", callback_data=f"rej_uid_{t_uid}")
             )
-            bot.send_message(ADMIN_ID, f"{header_label}
-Total Pending: `{len(user_pending_accs)}`", parse_mode="Markdown", reply_markup=markup_all)
+            bot.send_message(ADMIN_ID, f"{header_label}\nTotal Pending: `{len(user_pending_accs)}`", parse_mode="Markdown", reply_markup=markup_all)
 
         for acc in user_pending_accs:
             idx = submitted_accounts.index(acc)
             btn = telebot.types.InlineKeyboardMarkup()
             btn.add(telebot.types.InlineKeyboardButton("Approve", callback_data=f"app_{idx}"), telebot.types.InlineKeyboardButton("Reject", callback_data=f"rej_{idx}"))
-            info = f"Task: `{acc.get('task_name')}`
-Username: `{acc['username']}`
-Password: `{acc['password']}`
-2FA: `{acc.get('2fa', 'N/A')}`
-Auth Token: `{acc.get('token', 'N/A')}`"
+            info = f"Task: `{acc.get('task_name')}`\nUsername: `{acc['username']}`\nPassword: `{acc['password']}`\n2FA: `{acc.get('2fa', 'N/A')}`\nAuth Token: `{acc.get('token', 'N/A')}`"
             bot.send_message(ADMIN_ID, info, parse_mode="Markdown", reply_markup=btn)
         return
 
@@ -2688,9 +2480,7 @@ Auth Token: `{acc.get('token', 'N/A')}`"
             approve_single_account(acc)
             bot.answer_callback_query(call.id, "Approved!")
             try:
-                bot.edit_message_text(call.message.text + "
-
-**[Status: APPROVED]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+                bot.edit_message_text(call.message.text + "\n\n**[Status: APPROVED]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             except Exception:
                 pass
 
@@ -2701,9 +2491,7 @@ Auth Token: `{acc.get('token', 'N/A')}`"
             reject_single_account(acc)
             bot.answer_callback_query(call.id, "Rejected!")
             try:
-                bot.edit_message_text(call.message.text + "
-
-**[Status: REJECTED]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+                bot.edit_message_text(call.message.text + "\n\n**[Status: REJECTED]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             except Exception:
                 pass
 
@@ -2719,9 +2507,7 @@ Auth Token: `{acc.get('token', 'N/A')}`"
             bot.answer_callback_query(call.id, "Send payment screenshot:")
             bot.send_message(ADMIN_ID, f"📤 Send a **screenshot (Photo)** to confirm payment for request ID `{idx}`:", parse_mode="Markdown")
             try:
-                bot.edit_message_text(call.message.text + "
-
-**[Awaiting Payment Screenshot 📸]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+                bot.edit_message_text(call.message.text + "\n\n**[Awaiting Payment Screenshot 📸]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             except Exception:
                 pass
 
@@ -2743,9 +2529,7 @@ Auth Token: `{acc.get('token', 'N/A')}`"
                 pass
             bot.answer_callback_query(call.id, "Rejected & Refunded!")
             try:
-                bot.edit_message_text(call.message.text + "
-
-**[Status: REJECTED & REFUNDED ❌]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+                bot.edit_message_text(call.message.text + "\n\n**[Status: REJECTED & REFUNDED ❌]**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             except Exception:
                 pass
 
