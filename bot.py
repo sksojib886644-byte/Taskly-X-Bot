@@ -424,12 +424,10 @@ def extract_username(text):
 
 def extract_auth_token(text):
     text = str(text).strip()
-    # 1. Standard cookie format: auth_token=xxxx;
     match = re.search(r'auth_token=([a-zA-Z0-9_-]{20,})', text)
     if match:
         return match.group(1)
     
-    # 2. JSON cookie format: {"name": "auth_token", "value": "xxxx"}
     json_match = re.search(r'"name"\s*:\s*"auth_token"[^}]*?"value"\s*:\s*"([a-zA-Z0-9_-]{20,})"', text)
     if json_match:
         return json_match.group(1)
@@ -437,7 +435,6 @@ def extract_auth_token(text):
     if json_match_rev:
         return json_match_rev.group(1)
 
-    # 3. Direct 40-char hex token anywhere in text
     hex_match = re.search(r'\b([a-fA-F0-9]{40})\b', text)
     if hex_match:
         return hex_match.group(1)
@@ -512,7 +509,6 @@ def parse_full_accounts_file(message):
     rows_data = []
     def split_account_line(line):
         line = line.strip()
-        # Split into max 4 parts (username, password, 2fa, cookies/token) so cookies with colons/spaces stay intact
         if '|' in line:
             parts = [p.strip() for p in line.split('|', 3)]
         elif '\t' in line:
@@ -538,7 +534,6 @@ def parse_full_accounts_file(message):
                     if not any(row):
                         continue
                     row_list = [str(c).strip() if c is not None else "" for c in row]
-                    # If user put everything in cell A1 separated by ':' or '|'
                     if len(row_list) == 1 or (len(row_list) > 1 and not row_list[1] and (':' in row_list[0] or '|' in row_list[0])):
                         row_list = split_account_line(row_list[0])
                     uname = extract_username(row_list[0]) if row_list and row_list[0] else None
@@ -791,38 +786,40 @@ def handle_all_messages(message):
                 bot.send_message(ADMIN_ID, "❌ ফাইল বা টেক্সটে কোনো ডাটা পাওয়া যায়নি!", reply_markup=admin_panel_keyboard())
                 return
 
-            msg = bot.send_message(ADMIN_ID, f"⏳ {len(rows_data)} টি একাউন্ট থেকে Auth Token এক্সট্র্যাক্ট করে ACCSmarket ফরম্যাটে সাজানো হচ্ছে...")
+            msg = bot.send_message(ADMIN_ID, f"⏳ {len(rows_data)} টি একাউন্ট প্রসেস করে ক্লিন .txt ফাইল তৈরি করা হচ্ছে...")
             
-            accsmarket_lines = []
-            use_colon = SETTINGS.get('extractor_colon_enabled', True)
-            sep = ":" if use_colon else " "
+            clean_lines = []
             
             for item in rows_data:
                 row = item['row']
-                # Skip header row if present
-                if row and str(row[0]).strip().upper() in ["USERNAME", "LOGIN", "USER"]:
+                if not row:
+                    continue
+                
+                if str(row[0]).strip().upper() in ["USERNAME", "LOGIN", "USER"]:
                     continue
 
-                full_line = " ".join([str(x) for x in row])
-                
-                username = str(row[0]).replace("@", "").strip().rstrip(":") if len(row) > 0 and row[0] is not None else ""
-                password = str(row[1]).strip().rstrip(":") if len(row) > 1 and row[1] is not None else ""
-                two_fa = str(row[2]).replace(" ", "").strip().rstrip(":") if len(row) > 2 and row[2] is not None else ""
-                
-                cookies_text = row[3] if len(row) > 3 and row[3] else full_line
-                auth_token = extract_auth_token(cookies_text)
-                if not auth_token or auth_token in [username, password, two_fa]:
-                    auth_token = extract_auth_token(full_line)
+                if len(row) == 1 and ':' in str(row[0]):
+                    parts = [p.strip() for p in str(row[0]).split(':', 3)]
+                else:
+                    parts = [str(x).strip() if x is not None else "" for x in row]
 
-                # Format strictly as username:password:2fa:auth_token for ACCSmarket
-                fields = [f for f in [username, password, two_fa, auth_token] if f != ""]
-                if fields:
-                    accsmarket_lines.append(sep.join(fields))
+                username = parts[0].replace("@", "").strip().rstrip(":") if len(parts) > 0 else ""
+                password = parts[1].strip().rstrip(":") if len(parts) > 1 else ""
+                two_fa = parts[2].replace(" ", "").strip().rstrip(":") if len(parts) > 2 else ""
+                
+                full_line = " ".join(parts)
+                raw_cookie_or_token = parts[3] if len(parts) > 3 and parts[3] else full_line
+                auth_token = extract_auth_token(raw_cookie_or_token).strip().rstrip(":")
 
-            txt_content = "\n".join(accsmarket_lines)
+                if username and password and two_fa and auth_token:
+                    clean_lines.append(f"{username}:{password}:{two_fa}:{auth_token}")
+                elif username and password and auth_token:
+                    clean_lines.append(f"{username}:{password}:{auth_token}")
+
+            txt_content = "\n".join(clean_lines)
             file_stream = io.BytesIO(txt_content.encode('utf-8'))
             file_stream.seek(0)
-            file_stream.name = "accsmarket_ready_accounts.txt"
+            file_stream.name = "accsmarket_clean_accounts.txt"
 
             bot.delete_message(ADMIN_ID, msg.message_id)
             bot.send_document(
@@ -830,9 +827,8 @@ def handle_all_messages(message):
                 file_stream, 
                 caption=(
                     f"✅ **ACCSmarket Ready ফাইল তৈরি সম্পন্ন!**\n\n"
-                    f"• মোট একাউন্ট: `{len(accsmarket_lines)}`\n"
-                    f"• ফরম্যাট: `username{sep}password{sep}2fa{sep}auth_token`\n"
-                    f"• সরাসরি এই `.txt` ফাইলটি ACCSmarket-এ আপলোড করতে পারবেন।"
+                    f"• মোট ক্লিন একাউন্ট: `{len(clean_lines)}`\n"
+                    f"• ফরম্যাট: `username:password:2fa:auth_token`"
                 ),
                 reply_markup=admin_panel_keyboard(),
                 parse_mode="Markdown"
