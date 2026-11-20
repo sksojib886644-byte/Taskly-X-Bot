@@ -4,9 +4,8 @@ import io
 import telebot
 from telebot import types
 import openpyxl
-import requests
 
-BOT_TOKEN = "8812072288:AAExocW5uiJrQ_zN8Ad7Kqf6gy8xOpaZLf0"
+BOT_TOKEN = "8812072288:AAGAnsCmP2-IdgLoe3U6jPsOwGZ-OjK6wbw"
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 user_states = {}
@@ -16,7 +15,7 @@ user_data = {}
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn_check = types.KeyboardButton("🔍 একাউন্ট চেক")
-    btn_accs = types.KeyboardButton("📦 ACCSmarket সাবমিট")
+    btn_accs = types.KeyboardButton("📦 সাবমিট")
     btn_sep = types.KeyboardButton("✂️ চিহ্ন বসানো")
     btn_token = types.KeyboardButton("🍪 কুকিজ থেকে টোকেন")
     btn_clear = types.KeyboardButton("🗑️ রিসেট")
@@ -51,8 +50,8 @@ def accs_menu():
 def check_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
+        types.InlineKeyboardButton("🛡️ নিরাপদ একাউন্ট চেক", callback_data="chk:safe"),
         types.InlineKeyboardButton("📋 ফরম্যাট ভ্যালিডেট", callback_data="chk:format"),
-        types.InlineKeyboardButton("🌐 লাইভ প্রোফাইল চেক", callback_data="chk:live"),
     )
     return markup
 
@@ -140,7 +139,6 @@ def parse_uploaded_file(file_bytes, filename):
                 non_empty = [str(c).strip() for c in row if c is not None and str(c).strip()]
                 if not non_empty:
                     continue
-                # হেডার রো স্কিপ করা
                 if len(non_empty) == 1 and non_empty[0].lower() in ["account data", "accounts", "username", "usernames"]:
                     continue
                 if len(non_empty) >= 3:
@@ -154,6 +152,39 @@ def parse_uploaded_file(file_bytes, filename):
                 extracted_lines.append(ln.strip())
 
     return "\n".join(extracted_lines)
+
+
+def safe_account_audit(lines):
+    """
+    একাউন্টে লগইন বা সরাসরি X-এ হিট না করে নিরাপদে চেক করে
+    যাতে ভালো একাউন্ট সাসপেন্ড হওয়ার ঝুঁকি না বাড়ে।
+    """
+    clean_ready = []
+    flagged = []
+    seen_users = set()
+
+    for ln in lines:
+        line = ln.strip()
+        parts = line.split(":")
+        user = parts[0].strip().lstrip("@") if parts else ""
+
+        reasons = []
+        if not re.match(r"^[A-Za-z0-9_]{1,15}$", user):
+            reasons.append("অস্বাভাবিক ইউজারনেম")
+        if user.lower() in seen_users:
+            reasons.append("ডুপ্লিকেট ইউজারনেম")
+        if len(parts) < 2 or not parts[1].strip():
+            reasons.append("পাসওয়ার্ড নেই")
+        if len(parts) < 3 or not re.sub(r"\s+", "", parts[2]):
+            reasons.append("2FA কী নেই")
+
+        if reasons:
+            flagged.append(f"{line}  -->  ({', '.join(reasons)})")
+        else:
+            seen_users.add(user.lower())
+            clean_ready.append(line)
+
+    return clean_ready, flagged
 
 
 def send_menu_for_state(chat_id, uid, lines_count, source_label="ডেটা"):
@@ -175,7 +206,7 @@ def handle_start(message):
     bot.send_message(
         message.chat.id,
         "স্বাগতম! টেক্সট লিস্ট অথবা <b>.xlsx / .txt</b> ফাইল পাঠান এবং নিচের বাটন ব্যবহার করুন:\n\n"
-        "• <b>একাউন্ট চেক</b>: ফরম্যাট বা লাইভ প্রোফাইল যাচাই\n"
+        "• <b>একাউন্ট চেক</b>: একাউন্ট সাসপেন্ডের ঝুঁকি ছাড়া নিরাপদ চেক ও ফরম্যাট যাচাই\n"
         "• <b>ACCSmarket সাবমিট</b>: ইউজারনেম, ডুপ্লিকেট রিমুভ, XLSX/TXT\n"
         "• <b>চিহ্ন বসানো</b>: আলাদা চিহ্ন দিয়ে ফরম্যাট সাজানো\n"
         "• <b>কুকিজ থেকে টোকেন</b>: কুকিজ থেকে টোকেন আলাদা করা",
@@ -197,7 +228,7 @@ def handle_check_btn(message):
     user_states[uid] = "WAITING_CHECK_INPUT"
     bot.send_message(
         message.chat.id,
-        "একাউন্ট লিস্ট বা <b>.xlsx / .txt</b> ফাইল পাঠান:",
+        "একাউন্ট লিস্ট বা <b>.xlsx / .txt</b> ফাইল পাঠান (একাউন্টে লগইন বা X-এ হিট করা হবে না):",
         reply_markup=check_menu(),
     )
 
@@ -357,7 +388,22 @@ def handle_callbacks(call):
         mode = data.split(":", 1)[1]
         lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
 
-        if mode == "format":
+        if mode == "safe":
+            clean_ready, flagged = safe_account_audit(lines)
+            # ক্লিন লিস্ট সেভ রাখা যাতে পরের বাটনে সহজে ব্যবহার করা যায়
+            if clean_ready:
+                user_data[uid] = "\n".join(clean_ready)
+            msg = (
+                f"<b>নিরাপদ একাউন্ট চেক (সাসপেন্ডের ঝুঁকি ছাড়া):</b>\n"
+                f"• রেডি / ক্লিন একাউন্ট: <b>{len(clean_ready)}</b>\n"
+                f"• সমস্যাযুক্ত / চেক দরকার: <b>{len(flagged)}</b>"
+            )
+            if flagged:
+                msg += "\n\n<b>সমস্যাযুক্ত লাইন:</b>\n<code>" + "\n".join(flagged[:30]) + "</code>"
+            bot.send_message(call.message.chat.id, msg)
+            bot.answer_callback_query(call.id, "নিরাপদ চেক সম্পন্ন")
+
+        elif mode == "format":
             valid = []
             invalid = []
             for ln in lines:
@@ -374,28 +420,6 @@ def handle_callbacks(call):
                 + (f"\n\n<code>" + "\n".join(invalid) + "</code>" if invalid else ""),
             )
             bot.answer_callback_query(call.id, "ফরম্যাট চেক সম্পন্ন")
-
-        elif mode == "live":
-            users = extract_usernames(raw)
-            live_ok = []
-            not_found = []
-            for u in users[:25]:
-                try:
-                    r = requests.get(f"https://x.com/{u}", timeout=8, allow_redirects=True)
-                    if r.status_code == 200:
-                        live_ok.append(u)
-                    else:
-                        not_found.append(f"{u} (HTTP {r.status_code})")
-                except Exception:
-                    not_found.append(f"{u} (Error)")
-            bot.send_message(
-                call.message.chat.id,
-                f"<b>লাইভ চেক (প্রথম {min(len(users), 25)}টি):</b>\n"
-                f"• রেসপন্স পাওয়া গেছে: <b>{len(live_ok)}</b>\n"
-                f"• সমস্যা/নেই: <b>{len(not_found)}</b>\n"
-                + ("\n".join(not_found) if not_found else ""),
-            )
-            bot.answer_callback_query(call.id, "লাইভ চেক সম্পন্ন")
 
 
 if __name__ == "__main__":
