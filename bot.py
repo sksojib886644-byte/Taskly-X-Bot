@@ -24,7 +24,7 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-TOKEN = '8812072288:AAGEnXzGHHR1PcCUVS7EbUyxDl3siuA-9og'
+TOKEN = '8812072288:AAFXtmGriG-8F7tNe8VRyDYxBU9o01RAWtg'
 CHANNEL_USERNAME = '@taandob7'
 ADMIN_ID = 8702921423
 BOT_USERNAME = 'TasklyX_BD_Bot'
@@ -53,7 +53,7 @@ SETTINGS = {
     'auto_approve_pct': 80.0,
     'custom_check_reject_pct': 2.8,
     'custom_check_reject_enabled': True,
-    'extractor_colon_enabled': True,
+    'extractor_colon_enabled': False,
     'admin_pin': '4875',
     'top_enabled': True,
     'top_reset_mode': 'daily_10pm',
@@ -162,9 +162,8 @@ def search_pending_menu():
 
 def check_accounts_username_menu():
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row(telebot.types.KeyboardButton("🔍 Check All Submitted Accounts"))
-    markup.row(telebot.types.KeyboardButton("🐦 Check Task 1 Accounts"), telebot.types.KeyboardButton("🔥 Check Task 2 Accounts"))
-    markup.row(telebot.types.KeyboardButton("👑 Admin Panel"))
+    markup.row(telebot.types.KeyboardButton("🔍 Check All Submitted Accounts"), telebot.types.KeyboardButton("🐦 Check Task 1 Accounts"))
+    markup.row(telebot.types.KeyboardButton("🔥 Check Task 2 Accounts"), telebot.types.KeyboardButton("👑 Admin Panel"))
     return markup
 
 def database_stats_keyboard():
@@ -790,25 +789,40 @@ def handle_all_messages(message):
             one_line_str = " ".join(rej_usernames)
             col_a_str = "\n".join(rej_usernames)
 
+            wb_rej = openpyxl.Workbook()
+            ws_rej = wb_rej.active
+            ws_rej.title = "Rejected_Usernames"
+            ws_rej.append(["Username (Column A)", "All Usernames (One Line)"])
+
+            for idx, uname in enumerate(rej_usernames):
+                if idx == 0:
+                    ws_rej.append([uname, one_line_str])
+                else:
+                    ws_rej.append([uname, ""])
+
+            ws_rej.column_dimensions['A'].width = 28
+            ws_rej.column_dimensions['B'].width = 60
+
+            xlsx_bio = io.BytesIO()
+            wb_rej.save(xlsx_bio)
+            xlsx_bio.seek(0)
+            xlsx_bio.name = "accsmarket_rejected_usernames.xlsx"
+
             if len(one_line_str) <= 3500 and len(col_a_str) <= 3500:
                 bot.send_message(
                     ADMIN_ID,
                     f"🚫 <b>ACCSmarket Rejected Usernames ({len(rej_usernames)}):</b>\n\n"
                     f"<b>এক লাইনে:</b>\n<code>{one_line_str}</code>\n\n"
                     f"<b>A কলামে:</b>\n<code>{col_a_str}</code>",
-                    parse_mode="HTML",
-                    reply_markup=admin_panel_keyboard()
+                    parse_mode="HTML"
                 )
-            else:
-                txt_bio = io.BytesIO(col_a_str.encode("utf-8"))
-                txt_bio.seek(0)
-                txt_bio.name = "accsmarket_rejected_usernames.txt"
-                bot.send_document(
-                    ADMIN_ID,
-                    txt_bio,
-                    caption=f"🚫 মোট {len(rej_usernames)} টি রিজেক্টেড ইউজারনেমের লিস্ট",
-                    reply_markup=admin_panel_keyboard()
-                )
+
+            bot.send_document(
+                ADMIN_ID,
+                xlsx_bio,
+                caption=f"📊 ACCSmarket Rejected Usernames শিট ফাইল ({len(rej_usernames)} pcs)",
+                reply_markup=admin_panel_keyboard()
+            )
             return
 
         if admin_step == 'awaiting_batch_pin':
@@ -909,7 +923,6 @@ def handle_all_messages(message):
             msg = bot.send_message(ADMIN_ID, f"⏳ {len(rows_data)} টি একাউন্ট থেকে Auth Token এক্সট্র্যাক্ট করা হচ্ছে, অপেক্ষা করুন...")
 
             extracted_rows = []
-            add_colon = SETTINGS.get('extractor_colon_enabled', True)
 
             for item in rows_data:
                 row = item['row']
@@ -924,16 +937,10 @@ def handle_all_messages(message):
                     cookies_text = row[3] if len(row) > 3 else full_line
                     auth_token = extract_auth_token(cookies_text)
 
-                if add_colon:
-                    u_val = f"{username}:" if username else ""
-                    p_val = f"{password}:" if password else ""
-                    t_val = f"{two_fa}:" if two_fa else ""
-                else:
-                    u_val = username
-                    p_val = password
-                    t_val = two_fa
+                if auth_token:
+                    auth_token = str(auth_token).replace(":", "").strip()
 
-                extracted_rows.append([u_val, p_val, t_val, auth_token])
+                extracted_rows.append([username, password, two_fa, auth_token])
 
             wb = openpyxl.Workbook()
             ws = wb.active
@@ -952,7 +959,7 @@ def handle_all_messages(message):
             bot.send_document(
                 ADMIN_ID,
                 file_stream,
-                caption=f"✅ **Auth Token Extraction সম্পন্ন হয়েছে!**\n\n• মোট প্রসেসড একাউন্ট: `{len(extracted_rows)}`\n• Colons (:): `{'ON' if add_colon else 'OFF'}`",
+                caption=f"✅ **Auth Token Extraction সম্পন্ন হয়েছে!**\n\n• মোট প্রসেসড একাউন্ট: `{len(extracted_rows)}`",
                 reply_markup=admin_panel_keyboard()
             )
             return
@@ -1513,16 +1520,11 @@ def handle_all_messages(message):
 
         elif text == "🔑 Extract Auth Token from Sheet":
             user_steps[ADMIN_ID] = 'admin_awaiting_extract_cookies'
-            colon_st = "🟢 ON" if SETTINGS.get('extractor_colon_enabled', True) else "🔴 OFF"
-            markup = telebot.types.InlineKeyboardMarkup()
-            markup.add(telebot.types.InlineKeyboardButton(f"🔑 Colons: {colon_st}", callback_data="toggle_extractor_colon_inline"))
-
             bot.send_message(
                 ADMIN_ID,
-                "🔑 **Auth Token Extractor Settings & Upload:**\n\n"
-                f"• Colons (:): `{colon_st}`\n\n"
+                "🔑 **Auth Token Extractor Upload:**\n\n"
                 "আপনার `username, password, 2fa key, cookies` সংবলিত ফাইলটি (`.xlsx` অথবা টেক্সট লিস্ট) এখানে আপলোড করুন। বট কুকিজ থেকে `auth_token` বের করে আপনাকে ক্লিন এক্সেল প্রদান করবে।",
-                reply_markup=markup,
+                reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel")),
                 parse_mode="Markdown"
             )
             return
@@ -2466,27 +2468,6 @@ def handle_callbacks(call):
     user_id = call.from_user.id
 
     if user_id != ADMIN_ID:
-        return
-
-    if data == "toggle_extractor_colon_inline":
-        SETTINGS['extractor_colon_enabled'] = not SETTINGS.get('extractor_colon_enabled', True)
-        colon_st = "🟢 ON" if SETTINGS.get('extractor_colon_enabled', True) else "🔴 OFF"
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton(f"🔑 Colons: {colon_st}", callback_data="toggle_extractor_colon_inline"))
-
-        bot.answer_callback_query(call.id, f"Colons toggled to {colon_st}")
-        try:
-            bot.edit_message_text(
-                "🔑 **Auth Token Extractor Settings & Upload:**\n\n"
-                f"• Colons (:): `{colon_st}`\n\n"
-                "আপনার `username, password, 2fa key, cookies` সংবলিত ফাইলটি (`.xlsx` অথবা টেক্সট লিস্ট) এখানে আপলোড করুন। বট কুকিজ থেকে `auth_token` বের করে আপনাকে ক্লিন এক্সেল প্রদান করবে।",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=markup,
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
         return
 
     if data.startswith("adm_block_"):
