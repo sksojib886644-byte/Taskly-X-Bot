@@ -10,7 +10,6 @@ import io
 import openpyxl
 import threading
 import os
-import math
 import hashlib
 from flask import Flask
 
@@ -406,11 +405,13 @@ def fetch_twitter_code(token):
     return None
 
 def extract_username(text):
-    text = text.strip()
+    if not text:
+        return None
+    text = str(text).strip()
     match = re.search(r'(?:https?://(?:www\.)?(?:twitter|x)\.com/)?@?([a-zA-Z0-9_]{1,15})', text)
     if match:
         uname = match.group(1)
-        if len(uname) >= 3 and not uname.lower() in ['http', 'https', 'com', 'twitter', 'x', 'account_data', 'accountdata']:
+        if len(uname) >= 3 and uname.lower() not in ['http', 'https', 'com', 'twitter', 'x', 'account_data', 'accountdata']:
             return uname
 
     parts = re.split(r'[:|,\s\t]+', text)
@@ -424,7 +425,7 @@ def extract_username(text):
     return None
 
 def extract_auth_token(text):
-    text = text.strip()
+    text = str(text).strip()
     match = re.search(r'auth_token=([a-zA-Z0-9_-]+)', text)
     if match:
         return match.group(1)
@@ -435,29 +436,38 @@ def extract_auth_token(text):
     return text
 
 def check_status_by_username(username):
-    if not username or username == 'N/A':
+    if not username or str(username).strip() in ['', 'N/A']:
         return 'suspended'
 
-    clean_username = username.replace('@', '').strip()
+    clean_username = str(username).replace('@', '').strip()
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9'
     }
 
     try:
         url = f"https://x.com/{clean_username}"
-        res = requests.get(url, headers=headers, timeout=6)
-        if res.status_code == 200:
-            html = res.text.lower()
-            if "account suspended" in html or "this account doesn’t exist" in html or "user not found" in html:
-                return 'suspended'
-            return 'active'
-        elif res.status_code == 404:
-            return 'suspended'
-    except Exception:
-        pass
+        res = requests.get(url, headers=headers, timeout=8, allow_redirects=True)
 
-    return 'active'
+        if res.status_code == 404:
+            return 'suspended'
+
+        html = (res.text or "").lower()
+        suspended_markers = [
+            "account suspended",
+            "this account doesn’t exist",
+            "this account doesn't exist",
+            "user not found",
+            "account has been suspended"
+        ]
+        if any(marker in html for marker in suspended_markers):
+            return 'suspended'
+
+        return 'active'
+    except Exception as e:
+        print(f"Username check warning for {clean_username}: {e}")
+        return 'active'
 
 def process_file_or_text_usernames(message):
     usernames_found = []
@@ -465,7 +475,7 @@ def process_file_or_text_usernames(message):
         try:
             file_info = bot.get_file(message.document.file_id)
             downloaded_file = bot.download_file(file_info.file_path)
-            file_name = message.document.file_name.lower()
+            file_name = (message.document.file_name or '').lower()
 
             if file_name.endswith('.xlsx'):
                 wb = openpyxl.load_workbook(io.BytesIO(downloaded_file))
@@ -484,9 +494,9 @@ def process_file_or_text_usernames(message):
                     u = extract_username(line)
                     if u:
                         usernames_found.append(u)
-        except Exception:
-            pass
-    elif message.content_type == 'text':
+        except Exception as e:
+            print(f"File error: {e}")
+    elif message.content_type == 'text' and message.text:
         for line in message.text.splitlines():
             u = extract_username(line)
             if u:
@@ -501,7 +511,7 @@ def parse_full_accounts_file(message):
         try:
             file_info = bot.get_file(message.document.file_id)
             downloaded_file = bot.download_file(file_info.file_path)
-            file_name = message.document.file_name.lower()
+            file_name = (message.document.file_name or '').lower()
 
             if file_name.endswith('.xlsx'):
                 wb = openpyxl.load_workbook(io.BytesIO(downloaded_file))
@@ -520,9 +530,9 @@ def parse_full_accounts_file(message):
                     parts = re.split(r'[:|,\s\t]+', line.strip())
                     uname = extract_username(parts[0]) if parts else None
                     rows_data.append({'row': [line.strip()], 'username': uname})
-        except Exception:
-            pass
-    elif message.content_type == 'text':
+        except Exception as e:
+            print(f"Parse file error: {e}")
+    elif message.content_type == 'text' and message.text:
         for line in message.text.splitlines():
             if not line.strip():
                 continue
@@ -532,11 +542,6 @@ def parse_full_accounts_file(message):
     return rows_data
 
 def format_accsmarket_ready_lines(rows_data):
-    """
-    ACCSmarket সাবমিশনের জন্য সঠিক ফরম্যাটে (username:password:2fa_key) লিস্ট তৈরি করে।
-    যেকোনো সংখ্যক কলাম থাকলেও মাঝের অংশগুলো ':' দিয়ে যুক্ত হয় এবং শেষ কলামের শেষে ':' দেয় না।
-    Account_Data বা কোনো হেডার লাইন বাদ দেয়।
-    """
     formatted_lines = []
     seen = set()
 
@@ -776,7 +781,7 @@ def handle_all_messages(message):
             user_steps.pop(ADMIN_ID, None)
 
             if not rows_data:
-                bot.send_message(ADMIN_ID, "❌ ফাইল বা টেক্সটে কোনো রিজেক্টেড একাউন্ট ডাটা পাওয়া যায়নি!", reply_markup=admin_panel_keyboard())
+                bot.send_message(ADMIN_ID, "❌ ফাইল বা টেক্সটে কোনো ডাটা পাওয়া যায়নি!", reply_markup=admin_panel_keyboard())
                 return
 
             rej_usernames = extract_rejected_usernames(rows_data)
