@@ -24,7 +24,7 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-TOKEN = '8812072288:AAHSrcetrAwJiEf98Tu1r-6mFEXT1MscC5I'
+TOKEN = '8812072288:AAGEnXzGHHR1PcCUVS7EbUyxDl3siuA-9og'
 CHANNEL_USERNAME = '@taandob7'
 ADMIN_ID = 8702921423
 BOT_USERNAME = 'TasklyX_BD_Bot'
@@ -150,7 +150,6 @@ def admin_panel_keyboard():
     markup.row(telebot.types.KeyboardButton("🎬 Video Management"), telebot.types.KeyboardButton("📊 Task 1 Excel"))
     markup.row(telebot.types.KeyboardButton("📊 Task 2 Excel (2FA)"), telebot.types.KeyboardButton("🔍 Check Accounts via Username"))
     markup.row(telebot.types.KeyboardButton("📥 Custom Username Check"), telebot.types.KeyboardButton("📊 Database Stats"))
-    # নতুন ২টি বাটন
     markup.row(telebot.types.KeyboardButton("📦 ACCSmarket Submit Ready"), telebot.types.KeyboardButton("🚫 ACCSmarket Rejected Usernames"))
     markup.row(telebot.types.KeyboardButton("🏠 Main Menu"))
     return markup
@@ -533,8 +532,8 @@ def parse_full_accounts_file(message):
 
 def format_accsmarket_ready_lines(rows_data):
     """
-    ACCSmarket সাবমিশনের জন্য সঠিক ফরম্যাটে (username:password:2fa_key) লিস্ট তৈরি করে
-    এবং ডুপ্লিকেট এন্ট্রি বাদ দেয়।
+    ACCSmarket সাবমিশনের জন্য সঠিক ফরম্যাটে (username:password:2fa_key) লিস্ট তৈরি করে।
+    যেকোনো সংখ্যক কলাম থাকলেও মাঝের অংশগুলো ':' দিয়ে যুক্ত হয় এবং শেষ কলামের শেষে ':' দেয় না।
     """
     formatted_lines = []
     seen = set()
@@ -545,22 +544,24 @@ def format_accsmarket_ready_lines(rows_data):
         if not non_empty:
             continue
 
-        # হেডার লাইন বাদ দেওয়া
-        joined_lower = " ".join(non_empty).lower()
-        if joined_lower in ["username", "account data", "accounts", "username:password:2fa", "username password 2fa"]:
+        joined_lower = " ".join(non_empty).lower().replace(":", "")
+        if joined_lower in ["username", "account data", "accounts", "usernamepassword2fa", "username password 2fa"]:
             continue
 
-        if len(non_empty) == 1:
-            tokens = [t.strip() for t in re.split(r'[:|\t]+|\s+', non_empty[0]) if t.strip()]
-        else:
-            tokens = []
-            for cell in non_empty:
-                tokens.extend([t.strip() for t in re.split(r'[:|\t]+|\s+', cell) if t.strip()])
+        raw_tokens = []
+        for cell in non_empty:
+            parts = re.split(r'[:|\t]+|\s+', cell.strip())
+            for p in parts:
+                cleaned = p.strip().strip(":")
+                if cleaned:
+                    raw_tokens.append(cleaned)
 
-        if not tokens:
+        if not raw_tokens:
             continue
 
-        line_str = ":".join(tokens)
+        raw_tokens[-1] = raw_tokens[-1].rstrip(":")
+        line_str = ":".join(raw_tokens)
+
         key_lower = line_str.lower()
         if key_lower not in seen:
             seen.add(key_lower)
@@ -569,9 +570,6 @@ def format_accsmarket_ready_lines(rows_data):
     return formatted_lines
 
 def extract_rejected_usernames(rows_data):
-    """
-    ACCSmarket থেকে রিজেক্ট হওয়া একাউন্টগুলোর লিস্ট/ফাইল থেকে ইউজারনেম বের করে।
-    """
     usernames = []
     seen = set()
 
@@ -726,7 +724,6 @@ def handle_all_messages(message):
     if user_id == ADMIN_ID:
         admin_step = user_steps.get(ADMIN_ID)
 
-        # নতুন বাটন ১ ইনপুট হ্যান্ডলার: ACCSmarket Submit Ready
         if admin_step == 'admin_awaiting_accs_submit_ready':
             rows_data = parse_full_accounts_file(message)
             user_steps.pop(ADMIN_ID, None)
@@ -774,7 +771,6 @@ def handle_all_messages(message):
             )
             return
 
-        # নতুন বাটন ২ ইনপুট হ্যান্ডলার: ACCSmarket Rejected Usernames
         elif admin_step == 'admin_awaiting_accs_rejected_usernames':
             rows_data = parse_full_accounts_file(message)
             user_steps.pop(ADMIN_ID, None)
@@ -1462,19 +1458,17 @@ def handle_all_messages(message):
             bot.send_message(ADMIN_ID, "👑 **Admin Panel - Control Center**", reply_markup=admin_panel_keyboard(), parse_mode="Markdown")
             return
 
-        # নতুন বাটন ১: ACCSmarket Submit Ready
         elif text == "📦 ACCSmarket Submit Ready":
             user_steps[ADMIN_ID] = 'admin_awaiting_accs_submit_ready'
             bot.send_message(
                 ADMIN_ID,
                 "📦 <b>ACCSmarket Submit Ready:</b>\n\n"
-                "একাউন্ট লিস্ট বা <code>.xlsx</code> / <code>.txt</code> ফাইল পাঠান—আমি <code>username:password:2fa_key</code> ফরম্যাটে সাজিয়ে কপি করার লিস্ট ও এক্সেল ফাইল দিয়ে দিচ্ছি।",
+                "একাউন্ট লিস্ট বা <code>.xlsx</code> / <code>.txt</code> ফাইল পাঠান—যেকোনো কলামে ডাটা থাকলেও <code>:</code> দিয়ে সাজিয়ে শেষ কলামের শেষে বাড়তি <code>:</code> ছাড়া লিস্ট ও এক্সেল ফাইল দিয়ে দিচ্ছি।",
                 parse_mode="HTML",
                 reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel"))
             )
             return
 
-        # নতুন বাটন ২: ACCSmarket Rejected Usernames
         elif text == "🚫 ACCSmarket Rejected Usernames":
             user_steps[ADMIN_ID] = 'admin_awaiting_accs_rejected_usernames'
             bot.send_message(
