@@ -24,7 +24,7 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-TOKEN = '8812072288:AAFXtmGriG-8F7tNe8VRyDYxBU9o01RAWtg'
+TOKEN = '8812072288:AAFnZUlqS5P1jdXe79J8_ImULeo-yYUJqJo'
 CHANNEL_USERNAME = '@taandob7'
 ADMIN_ID = 8702921423
 BOT_USERNAME = 'TasklyX_BD_Bot'
@@ -410,12 +410,14 @@ def extract_username(text):
     match = re.search(r'(?:https?://(?:www\.)?(?:twitter|x)\.com/)?@?([a-zA-Z0-9_]{1,15})', text)
     if match:
         uname = match.group(1)
-        if len(uname) >= 3 and not uname.lower() in ['http', 'https', 'com', 'twitter', 'x']:
+        if len(uname) >= 3 and not uname.lower() in ['http', 'https', 'com', 'twitter', 'x', 'account_data', 'accountdata']:
             return uname
 
     parts = re.split(r'[:|,\s\t]+', text)
     for part in parts:
         part_clean = part.replace('@', '').strip()
+        if part_clean.lower() in ['account_data', 'accountdata', 'username']:
+            continue
         if 3 <= len(part_clean) <= 15 and re.match(r'^[a-zA-Z0-9_]+$', part_clean):
             if not part_clean.isdigit():
                 return part_clean
@@ -533,6 +535,7 @@ def format_accsmarket_ready_lines(rows_data):
     """
     ACCSmarket সাবমিশনের জন্য সঠিক ফরম্যাটে (username:password:2fa_key) লিস্ট তৈরি করে।
     যেকোনো সংখ্যক কলাম থাকলেও মাঝের অংশগুলো ':' দিয়ে যুক্ত হয় এবং শেষ কলামের শেষে ':' দেয় না।
+    Account_Data বা কোনো হেডার লাইন বাদ দেয়।
     """
     formatted_lines = []
     seen = set()
@@ -543,8 +546,12 @@ def format_accsmarket_ready_lines(rows_data):
         if not non_empty:
             continue
 
-        joined_lower = " ".join(non_empty).lower().replace(":", "")
-        if joined_lower in ["username", "account data", "accounts", "usernamepassword2fa", "username password 2fa"]:
+        joined_lower = " ".join(non_empty).lower().replace(":", "").replace("_", "").strip()
+        if joined_lower in [
+            "username", "account data", "accountdata", "accounts",
+            "usernamepassword2fa", "username password 2fa",
+            "username (column a)", "all usernames (one line)"
+        ]:
             continue
 
         raw_tokens = []
@@ -573,9 +580,16 @@ def extract_rejected_usernames(rows_data):
     seen = set()
 
     for item in rows_data:
+        row = item.get('row', [])
+        joined_check = " ".join([str(c).strip().lower().replace("_", "") for c in row if c is not None and str(c).strip()])
+        if joined_check in [
+            "accountdata", "username", "account data", "accounts",
+            "username (column a)", "all usernames (one line)"
+        ]:
+            continue
+
         uname = item.get('username')
         if not uname:
-            row = item.get('row', [])
             for cell in row:
                 u = extract_username(str(cell))
                 if u:
@@ -583,6 +597,8 @@ def extract_rejected_usernames(rows_data):
                     break
         if uname:
             clean_u = uname.lstrip('@').strip()
+            if clean_u.lower() in ["account_data", "accountdata", "username"]:
+                continue
             if clean_u and clean_u.lower() not in seen:
                 seen.add(clean_u.lower())
                 usernames.append(clean_u)
@@ -739,7 +755,6 @@ def handle_all_messages(message):
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "ACCSmarket_Ready"
-            ws.append(["Account_Data"])
             for ln in ready_lines:
                 ws.append([ln])
 
@@ -748,24 +763,10 @@ def handle_all_messages(message):
             file_stream.seek(0)
             file_stream.name = "accsmarket_submit_ready.xlsx"
 
-            joined_text = "\n".join(ready_lines)
-            if len(joined_text) <= 3800:
-                bot.send_message(
-                    ADMIN_ID,
-                    f"✅ <b>ACCSmarket Submit Ready ({len(ready_lines)}):</b>\n\n<code>{joined_text}</code>",
-                    parse_mode="HTML"
-                )
-            else:
-                bot.send_message(
-                    ADMIN_ID,
-                    f"✅ <b>ACCSmarket Submit Ready: {len(ready_lines)} একাউন্ট</b> (লিস্ট বড় হওয়ায় এক্সেল ফাইল পাঠানো হয়েছে)।",
-                    parse_mode="HTML"
-                )
-
             bot.send_document(
                 ADMIN_ID,
                 file_stream,
-                caption=f"📦 ACCSmarket সাবমিশনের জন্য প্রস্তুত ফাইল ({len(ready_lines)} pcs)",
+                caption=f"📦 ACCSmarket Submit Ready ফাইল ({len(ready_lines)} pcs)",
                 reply_markup=admin_panel_keyboard()
             )
             return
@@ -787,12 +788,10 @@ def handle_all_messages(message):
                 rejected_history_db.add(u.lower().strip())
 
             one_line_str = " ".join(rej_usernames)
-            col_a_str = "\n".join(rej_usernames)
 
             wb_rej = openpyxl.Workbook()
             ws_rej = wb_rej.active
             ws_rej.title = "Rejected_Usernames"
-            ws_rej.append(["Username (Column A)", "All Usernames (One Line)"])
 
             for idx, uname in enumerate(rej_usernames):
                 if idx == 0:
@@ -807,15 +806,6 @@ def handle_all_messages(message):
             wb_rej.save(xlsx_bio)
             xlsx_bio.seek(0)
             xlsx_bio.name = "accsmarket_rejected_usernames.xlsx"
-
-            if len(one_line_str) <= 3500 and len(col_a_str) <= 3500:
-                bot.send_message(
-                    ADMIN_ID,
-                    f"🚫 <b>ACCSmarket Rejected Usernames ({len(rej_usernames)}):</b>\n\n"
-                    f"<b>এক লাইনে:</b>\n<code>{one_line_str}</code>\n\n"
-                    f"<b>A কলামে:</b>\n<code>{col_a_str}</code>",
-                    parse_mode="HTML"
-                )
 
             bot.send_document(
                 ADMIN_ID,
@@ -1470,7 +1460,7 @@ def handle_all_messages(message):
             bot.send_message(
                 ADMIN_ID,
                 "📦 <b>ACCSmarket Submit Ready:</b>\n\n"
-                "একাউন্ট লিস্ট বা <code>.xlsx</code> / <code>.txt</code> ফাইল পাঠান—যেকোনো কলামে ডাটা থাকলেও <code>:</code> দিয়ে সাজিয়ে শেষ কলামের শেষে বাড়তি <code>:</code> ছাড়া লিস্ট ও এক্সেল ফাইল দিয়ে দিচ্ছি।",
+                "একাউন্ট লিস্ট বা <code>.xlsx</code> / <code>.txt</code> ফাইল পাঠান—শুধুমাত্র প্রস্তুত শিট ফাইল দিচ্ছি।",
                 parse_mode="HTML",
                 reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel"))
             )
@@ -1481,7 +1471,7 @@ def handle_all_messages(message):
             bot.send_message(
                 ADMIN_ID,
                 "🚫 <b>ACCSmarket Rejected Usernames:</b>\n\n"
-                "ACCSmarket থেকে রিজেক্ট হওয়া একাউন্টগুলোর লিস্ট বা <code>.xlsx</code> / <code>.txt</code> ফাইল পাঠান—আমি ইউজারনেমগুলো বের করে দিচ্ছি।",
+                "ACCSmarket থেকে রিজেক্ট হওয়া একাউন্টগুলোর লিস্ট বা <code>.xlsx</code> / <code>.txt</code> ফাইল পাঠান—শুধুমাত্র ইউজারনেম শিট ফাইল দিচ্ছি।",
                 parse_mode="HTML",
                 reply_markup=telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).row(telebot.types.KeyboardButton("👑 Admin Panel"))
             )
