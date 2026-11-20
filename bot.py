@@ -6,10 +6,9 @@ from telebot import types
 import openpyxl
 import requests
 
-BOT_TOKEN = "8812072288:AAFsl44BbG9O1O7z_9ng0yGfwJUKJ1r6rZg"
+BOT_TOKEN = "8812072288:AAExocW5uiJrQ_zN8Ad7Kqf6gy8xOpaZLf0"
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# ইউজার স্টেট ও ডেটা সংরক্ষণ
 user_states = {}
 user_data = {}
 
@@ -64,7 +63,6 @@ def extract_usernames(text):
         line = line.strip()
         if not line:
             continue
-        # username:password:2fa ফরম্যাট হলে প্রথম অংশ নেওয়া
         part = re.split(r"[:|\s]+", line)[0].strip()
         part = part.lstrip("@")
         if part:
@@ -91,7 +89,6 @@ def extract_tokens_from_cookies(raw_text):
     found = []
     raw_text = raw_text.strip()
 
-    # ১) JSON আকারে কুকিজ থাকলে
     try:
         parsed = json.loads(raw_text)
         items = parsed if isinstance(parsed, list) else [parsed]
@@ -105,7 +102,6 @@ def extract_tokens_from_cookies(raw_text):
     except Exception:
         pass
 
-    # ২) Header / Key=Value আকারে থাকলে
     patterns = [
         r"(?:auth_token|ct0|access_token|token)\s*=\s*([A-Za-z0-9_\-\.%]+)",
         r'"(?:auth_token|ct0|access_token|token)"\s*:\s*"([^"]+)"',
@@ -131,13 +127,54 @@ def build_xlsx_bytes(lines):
     return bio
 
 
+def parse_uploaded_file(file_bytes, filename):
+    fname = (filename or "").lower()
+    extracted_lines = []
+
+    if fname.endswith(".xlsx"):
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+        for ws in wb.worksheets:
+            for row in ws.iter_rows(values_only=True):
+                if not row:
+                    continue
+                non_empty = [str(c).strip() for c in row if c is not None and str(c).strip()]
+                if not non_empty:
+                    continue
+                # হেডার রো স্কিপ করা
+                if len(non_empty) == 1 and non_empty[0].lower() in ["account data", "accounts", "username", "usernames"]:
+                    continue
+                if len(non_empty) >= 3:
+                    extracted_lines.append(":".join(non_empty[:3]))
+                else:
+                    extracted_lines.append(" ".join(non_empty))
+    else:
+        text = file_bytes.decode("utf-8", errors="ignore")
+        for ln in text.splitlines():
+            if ln.strip():
+                extracted_lines.append(ln.strip())
+
+    return "\n".join(extracted_lines)
+
+
+def send_menu_for_state(chat_id, uid, lines_count, source_label="ডেটা"):
+    state = user_states.get(uid)
+    msg = f"{source_label} থেকে মোট <b>{lines_count}</b> লাইন রিসিভ হয়েছে। নিচের অপশন থেকে কাজ বেছে নিন:"
+
+    if state == "WAITING_SEP_INPUT":
+        bot.send_message(chat_id, msg, reply_markup=separator_menu())
+    elif state == "WAITING_ACCS_INPUT":
+        bot.send_message(chat_id, msg, reply_markup=accs_menu())
+    else:
+        bot.send_message(chat_id, msg, reply_markup=check_menu())
+
+
 @bot.message_handler(commands=["start"])
 def handle_start(message):
     uid = message.from_user.id
     user_states[uid] = None
     bot.send_message(
         message.chat.id,
-        "স্বাগতম! নিচের যেকোনো বাটন চাপুন এবং আপনার লিস্ট বা কুকিজ পাঠান:\n\n"
+        "স্বাগতম! টেক্সট লিস্ট অথবা <b>.xlsx / .txt</b> ফাইল পাঠান এবং নিচের বাটন ব্যবহার করুন:\n\n"
         "• <b>একাউন্ট চেক</b>: ফরম্যাট বা লাইভ প্রোফাইল যাচাই\n"
         "• <b>ACCSmarket সাবমিট</b>: ইউজারনেম, ডুপ্লিকেট রিমুভ, XLSX/TXT\n"
         "• <b>চিহ্ন বসানো</b>: আলাদা চিহ্ন দিয়ে ফরম্যাট সাজানো\n"
@@ -160,8 +197,7 @@ def handle_check_btn(message):
     user_states[uid] = "WAITING_CHECK_INPUT"
     bot.send_message(
         message.chat.id,
-        "একাউন্ট লিস্ট পাঠান (প্রতি লাইনে একটি করে):\n\n"
-        "পাঠানোর পর নিচের চেক অপশন বেছে নিতে পারবেন।",
+        "একাউন্ট লিস্ট বা <b>.xlsx / .txt</b> ফাইল পাঠান:",
         reply_markup=check_menu(),
     )
 
@@ -172,10 +208,7 @@ def handle_accs_btn(message):
     user_states[uid] = "WAITING_ACCS_INPUT"
     bot.send_message(
         message.chat.id,
-        "ACCSmarket-এর জন্য একাউন্ট লিস্ট পাঠান:\n"
-        "• ইউজারনেম বের করা\n"
-        "• ডুপ্লিকেট বাদ দেওয়া\n"
-        "• XLSX বা TXT ফাইল তৈরি",
+        "ACCSmarket-এর জন্য একাউন্ট লিস্ট বা <b>.xlsx / .txt</b> ফাইল পাঠান:",
         reply_markup=accs_menu(),
     )
 
@@ -186,7 +219,7 @@ def handle_sep_btn(message):
     user_states[uid] = "WAITING_SEP_INPUT"
     bot.send_message(
         message.chat.id,
-        "যে লিস্টের মাঝে চিহ্ন বসাতে চান তা পাঠান, তারপর বাটন থেকে চিহ্ন সিলেক্ট করুন:",
+        "যে লিস্ট বা ফাইলের মাঝে চিহ্ন বসাতে চান তা পাঠান, তারপর বাটন থেকে চিহ্ন সিলেক্ট করুন:",
         reply_markup=separator_menu(),
     )
 
@@ -197,8 +230,42 @@ def handle_token_btn(message):
     user_states[uid] = "WAITING_COOKIE_INPUT"
     bot.send_message(
         message.chat.id,
-        "কুকিজ (JSON বা Cookie স্ট্রিং) পাঠান—আমি টোকেনগুলো বের করে দিচ্ছি।",
+        "কুকিজ (JSON বা Cookie স্ট্রিং) অথবা ফাইল পাঠান—আমি টোকেনগুলো বের করে দিচ্ছি।",
     )
+
+
+@bot.message_handler(content_types=["document"])
+def handle_document_input(message):
+    uid = message.from_user.id
+    doc = message.document
+    try:
+        file_info = bot.get_file(doc.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+
+        if user_states.get(uid) == "WAITING_COOKIE_INPUT":
+            text_data = downloaded.decode("utf-8", errors="ignore")
+            tokens = extract_tokens_from_cookies(text_data)
+            if not tokens:
+                bot.send_message(message.chat.id, "ফাইল থেকে কোনো টোকেন পাওয়া যায়নি।")
+                return
+            bot.send_message(
+                message.chat.id,
+                f"<b>পাওয়া টোকেন ({len(tokens)}):</b>\n<code>" + "\n".join(tokens) + "</code>",
+            )
+            return
+
+        parsed_text = parse_uploaded_file(downloaded, doc.file_name)
+        lines_count = len([ln for ln in parsed_text.splitlines() if ln.strip()])
+
+        if lines_count == 0:
+            bot.send_message(message.chat.id, "ফাইলটি খালি বা পড়া যায়নি।")
+            return
+
+        user_data[uid] = parsed_text
+        send_menu_for_state(message.chat.id, uid, lines_count, source_label=f"ফাইল ({doc.file_name})")
+
+    except Exception as e:
+        bot.send_message(message.chat.id, f"ফাইল প্রসেস করতে সমস্যা হয়েছে: <code>{e}</code>")
 
 
 @bot.message_handler(content_types=["text"])
@@ -216,28 +283,9 @@ def handle_text_input(message):
         bot.send_message(message.chat.id, f"<b>পাওয়া টোকেন ({len(tokens)}):</b>\n<code>{result}</code>")
         return
 
-    # সাধারণ লিস্ট সংরক্ষণ ও অপশন দেখানো
     user_data[uid] = text
     lines_count = len([ln for ln in text.splitlines() if ln.strip()])
-
-    if state == "WAITING_SEP_INPUT":
-        bot.send_message(
-            message.chat.id,
-            f"মোট <b>{lines_count}</b> লাইন রিসিভ হয়েছে। কোন চিহ্ন বসাবেন তা সিলেক্ট করুন:",
-            reply_markup=separator_menu(),
-        )
-    elif state == "WAITING_ACCS_INPUT":
-        bot.send_message(
-            message.chat.id,
-            f"মোট <b>{lines_count}</b> লাইন রিসিভ হয়েছে। কী করতে চান তা বেছে নিন:",
-            reply_markup=accs_menu(),
-        )
-    else:
-        bot.send_message(
-            message.chat.id,
-            f"মোট <b>{lines_count}</b> লাইন রিসিভ হয়েছে। নিচের যেকোনো বাটন চাপুন:",
-            reply_markup=check_menu(),
-        )
+    send_menu_for_state(message.chat.id, uid, lines_count, source_label="টেক্সট")
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -247,10 +295,9 @@ def handle_callbacks(call):
     raw = user_data.get(uid, "")
 
     if not raw:
-        bot.answer_callback_query(call.id, "আগে লিস্ট পাঠান!")
+        bot.answer_callback_query(call.id, "আগে লিস্ট বা ফাইল পাঠান!")
         return
 
-    # ১) চিহ্ন বসানোর বাটন
     if data.startswith("sep:"):
         sep = data.split(":", 1)[1]
         formatted = apply_separator(raw, sep)
@@ -258,7 +305,6 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, "চিহ্ন বসানো হয়েছে")
         return
 
-    # ২) ACCSmarket বাটনগুলো
     if data.startswith("accs:"):
         action = data.split(":", 1)[1]
         lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
@@ -307,7 +353,6 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "TXT তৈরি হয়েছে")
         return
 
-    # ৩) একাউন্ট চেক বাটনগুলো
     if data.startswith("chk:"):
         mode = data.split(":", 1)[1]
         lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
@@ -334,7 +379,7 @@ def handle_callbacks(call):
             users = extract_usernames(raw)
             live_ok = []
             not_found = []
-            for u in users[:25]:  # রেট লিমিট এড়াতে প্রথম ২৫টি দ্রুত চেক
+            for u in users[:25]:
                 try:
                     r = requests.get(f"https://x.com/{u}", timeout=8, allow_redirects=True)
                     if r.status_code == 200:
@@ -356,4 +401,3 @@ def handle_callbacks(call):
 if __name__ == "__main__":
     print("Bot is running...")
     bot.infinity_polling(skip_pending=True)
-        
